@@ -229,7 +229,7 @@
   <div id="screen-games" class="screen">
     <h1 style="font-size:22px;margin:6px 2px 10px;">Fast-Select Games</h1>
     <div id="games-body"></div>
-    <button class="btn primary btn-lg" style="margin-top:14px;" onclick="openGameSheet()">+ Add a game</button>
+    <button class="btn primary btn-lg" style="margin-top:14px;" data-add-game>+ Add a game</button>
   </div>
 </div>
 
@@ -251,7 +251,7 @@
 //  Mirrors the raided-hex Activity stack: Discord-OAuth identity, Supabase-backed
 //  Edge Functions (ct-auth / ct-whoami / ct-data / ct-write), session-token'd.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.1.1';
+const APP_VERSION='0.1.2';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Config ─────────────────────────────────────────────────────────────────
@@ -272,6 +272,7 @@ let sessionToken=null;
 let account=null;
 let state={today:todayLocal(),games:[],active_trip:null,active_trip_totals:null,sessions:[]};
 let currentTab='today';
+let lastJackpots=[];
 
 // ── Formatting helpers ─────────────────────────────────────────────────────
 function todayLocal(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
@@ -474,6 +475,15 @@ function openSheet(title,html,onMount){
 function closeSheet(){document.getElementById('sheet').classList.remove('show');}
 document.getElementById('sheet').addEventListener('click',e=>{if(e.target.id==='sheet')closeSheet();});
 
+// Delegated clicks for buttons that live in HTML strings / static markup. Inline
+// onclick="" handlers are blocked in the sandboxed Activity iframe, so everything
+// routes through this one listener instead.
+document.addEventListener('click',e=>{
+  if(e.target.closest('[data-close-sheet]'))closeSheet();
+  else if(e.target.closest('[data-add-game]'))openGameSheet();
+  else if(e.target.closest('[data-copy-jackpots]'))copyJackpots(lastJackpots);
+});
+
 // Discord Activities run in a sandboxed iframe where window.confirm()/alert() are
 // silently blocked (they no-op), so we roll our own in-app confirm + toast.
 function toast(msg){
@@ -542,7 +552,7 @@ function openSessionSheet(game){
     <label class="field">Casino (optional)</label>
     <input id="f-casino" placeholder="${esc(state.active_trip?.casino||'e.g. Bellagio')}" value="${esc(state.active_trip?.casino||'')}">
     <div class="sheet-actions">
-      <button class="btn" onclick="closeSheet()">Cancel</button>
+      <button class="btn" data-close-sheet>Cancel</button>
       <button class="btn primary" id="f-start">Start session</button>
     </div>
   `,()=>{
@@ -606,7 +616,7 @@ function openBuyinSheet(sessionId){
     <div class="muted" style="font-size:13px;margin-bottom:8px;">${esc(s?.game_name||'')} · currently in ${money(s?.buy_in_total)}</div>
     <label class="field">Amount</label>
     <div class="money-input"><span class="dollar">$</span><input id="bi-amt" inputmode="decimal" placeholder="100" autofocus></div>
-    <div class="sheet-actions"><button class="btn" onclick="closeSheet()">Cancel</button>
+    <div class="sheet-actions"><button class="btn" data-close-sheet>Cancel</button>
       <button class="btn primary" id="bi-add">Add buy-in</button></div>
   `,()=>{
     document.getElementById('bi-amt').focus();
@@ -629,7 +639,7 @@ function openBonusSheet(sessionId){
     <div class="mult-preview">Multiple of base bet<b id="bo-mult">—</b></div>
     <div class="toggle-row"><div class="tr-label">W-2G jackpot (hand pay ≥ $1,200)</div>
       <div class="switch" id="bo-jp"></div></div>
-    <div class="sheet-actions"><button class="btn" onclick="closeSheet()">Cancel</button>
+    <div class="sheet-actions"><button class="btn" data-close-sheet>Cancel</button>
       <button class="btn primary" id="bo-add">Log bonus</button></div>
   `,()=>{
     const amt=document.getElementById('bo-amt'),bet=document.getElementById('bo-bet'),
@@ -659,7 +669,7 @@ function openCashoutSheet(sessionId){
     <label class="field">Cash-out amount</label>
     <div class="money-input"><span class="dollar">$</span><input id="co-amt" inputmode="decimal" placeholder="0"></div>
     <div class="mult-preview">Session net<b id="co-net">—</b></div>
-    <div class="sheet-actions"><button class="btn" onclick="closeSheet()">Cancel</button>
+    <div class="sheet-actions"><button class="btn" data-close-sheet>Cancel</button>
       <button class="btn primary" id="co-done">End session</button></div>
   `,()=>{
     const amt=document.getElementById('co-amt'),net=document.getElementById('co-net');
@@ -714,6 +724,7 @@ async function loadStats(){
   const r=await api('ct-data',{view:'stats'});
   if(!r.ok){body.innerHTML='<div class="empty">Could not load stats.</div>';return;}
   const st=r.stats;
+  lastJackpots=st.jackpots||[];
   if(st.session_count===0&&st.open_count===0){body.innerHTML='<div class="empty">No data yet — log a few sessions first.</div>';return;}
   const bb=st.biggest_bonus;
   const maxAbs=Math.max(1,...st.by_game.map(g=>Math.abs(g.net)));
@@ -735,7 +746,7 @@ async function loadStats(){
     ${st.by_game.length?`<div class="section-label">Net by game</div><div class="card">${st.by_game.map(g=>bar(g,maxAbs)).join('')}</div>`:''}
     ${st.by_casino.length>0?`<div class="section-label">Net by casino</div><div class="card">${st.by_casino.map(g=>bar(g,casMax)).join('')}</div>`:''}
     ${st.jackpots.length?`<div class="section-label">W-2G jackpots (≥ $1,200)</div>
-      <button class="btn" style="margin-bottom:8px;" onclick='copyJackpots(${JSON.stringify(st.jackpots).replace(/'/g,"&#39;")})'>📋 Copy list for taxes</button>
+      <button class="btn" style="margin-bottom:8px;" data-copy-jackpots>📋 Copy list for taxes</button>
       ${st.jackpots.map(jpRow).join('')}`:''}
   `;
 }
@@ -823,7 +834,7 @@ function openGameSheet(game){
     <div id="g-slot" style="${isSlotty(cat)?'':'display:none'}"><div class="row2">
       <div><label class="field">Default denom</label><input id="g-denom" inputmode="decimal" value="${g.default_denom??''}"></div>
       <div><label class="field">Default bet</label><input id="g-bet" inputmode="decimal" value="${g.default_bet??''}"></div></div></div>
-    <div class="sheet-actions"><button class="btn" onclick="closeSheet()">Cancel</button>
+    <div class="sheet-actions"><button class="btn" data-close-sheet>Cancel</button>
       <button class="btn primary" id="g-save">Save</button></div>
   `,()=>{
     let selCat=cat;
