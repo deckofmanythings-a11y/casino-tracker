@@ -1,0 +1,923 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>Casino Tracker</title>
+<script src="sb-client.bundle.js?v=1"></script>
+<script src="discord-embedded-app-sdk.js?v=1"></script>
+<style>
+  :root{
+    color-scheme:dark;
+    --bg:#0d1411; --panel:#151f1a; --panel2:#1b2721; --border:#28362e;
+    --text:#e9f1ec; --muted:rgba(233,241,236,.58); --faint:rgba(233,241,236,.32);
+    --gold:#e7c15c; --gold-dim:#b9973f;
+    --win:#48d78d; --loss:#ff6f6f; --chip:#22302a;
+    --shadow:0 8px 30px rgba(0,0,0,.45);
+    --safe-bottom:env(safe-area-inset-bottom,0px);
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:
+    radial-gradient(1200px 600px at 50% -10%,#16241d 0%,var(--bg) 60%) fixed;
+    color:var(--text);min-height:100vh;}
+  #auth-status{display:none;padding:60px 24px;text-align:center;font-size:14px;color:var(--muted);}
+  #auth-status.show{display:block;}
+  #auth-debug{font-size:11px;color:var(--faint);margin-top:10px;word-break:break-word;font-family:monospace;}
+  #app{display:none;max-width:520px;margin:0 auto;padding:0 14px calc(88px + var(--safe-bottom));}
+  #app.show{display:block;}
+  .screen{display:none;padding-top:14px;}
+  .screen.show{display:block;}
+  h1,h2,h3{margin:0;}
+  .section-label{font-size:12px;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted);margin:20px 2px 8px;}
+  .muted{color:var(--muted);} .faint{color:var(--faint);}
+  .win{color:var(--win);} .loss{color:var(--loss);}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:14px;box-shadow:var(--shadow);}
+
+  /* ── Day header ─────────────────────────────────────────── */
+  .day-header{display:flex;flex-direction:column;align-items:center;text-align:center;padding:22px 14px 16px;
+    background:linear-gradient(180deg,var(--panel) 0%,var(--panel2) 100%);border:1px solid var(--border);
+    border-radius:18px;box-shadow:var(--shadow);position:relative;overflow:hidden;}
+  .day-header::before{content:"";position:absolute;inset:0;background:
+    radial-gradient(600px 120px at 50% 0,rgba(231,193,92,.10),transparent 70%);pointer-events:none;}
+  .day-date{font-size:13px;color:var(--muted);letter-spacing:.4px;}
+  .day-net{font-size:44px;font-weight:800;line-height:1.05;margin:6px 0 4px;letter-spacing:-1px;}
+  .day-sub{display:flex;gap:16px;font-size:13px;color:var(--muted);flex-wrap:wrap;justify-content:center;}
+  .day-sub b{color:var(--text);font-weight:600;}
+
+  /* ── Trip banner ────────────────────────────────────────── */
+  #trip-banner{margin-top:12px;}
+  .trip-banner{display:flex;align-items:center;justify-content:space-between;gap:10px;
+    background:linear-gradient(90deg,rgba(231,193,92,.10),rgba(231,193,92,.03));
+    border:1px solid var(--gold-dim);border-radius:14px;padding:11px 14px;}
+  .trip-banner .tb-name{font-size:13px;font-weight:700;color:var(--gold);}
+  .trip-banner .tb-sub{font-size:11px;color:var(--muted);}
+  .trip-banner .tb-remain{text-align:right;}
+  .trip-banner .tb-remain .n{font-size:19px;font-weight:800;}
+  .trip-banner .tb-remain .l{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;}
+
+  /* ── Fast select ────────────────────────────────────────── */
+  .fast-select{display:flex;gap:9px;overflow-x:auto;padding:14px 2px 4px;scrollbar-width:none;}
+  .fast-select::-webkit-scrollbar{display:none;}
+  .fast-chip{flex:0 0 auto;min-width:104px;background:var(--panel);border:1px solid var(--border);
+    border-radius:14px;padding:11px 13px;cursor:pointer;transition:transform .06s,border-color .15s;}
+  .fast-chip:active{transform:scale(.96);}
+  .fast-chip .fc-name{font-size:14px;font-weight:700;white-space:nowrap;}
+  .fast-chip .fc-sub{font-size:11px;color:var(--muted);margin-top:3px;white-space:nowrap;}
+  .fast-chip .fc-cat{font-size:15px;}
+  .fast-chip.new{display:flex;align-items:center;justify-content:center;border-style:dashed;
+    color:var(--gold);font-weight:700;font-size:14px;min-width:92px;}
+
+  /* ── Session card ───────────────────────────────────────── */
+  .session-card{margin-top:12px;}
+  .session-card.active{border-color:var(--gold-dim);box-shadow:0 0 0 1px rgba(231,193,92,.15),var(--shadow);}
+  .sc-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;}
+  .sc-title{font-size:17px;font-weight:700;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+  .cat-chip{font-size:10px;text-transform:uppercase;letter-spacing:.7px;background:var(--chip);
+    color:var(--muted);padding:3px 8px;border-radius:20px;}
+  .live-dot{width:8px;height:8px;border-radius:50%;background:var(--win);display:inline-block;
+    box-shadow:0 0 0 0 rgba(72,215,141,.6);animation:pulse 1.8s infinite;}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(72,215,141,.5);}70%{box-shadow:0 0 0 7px rgba(72,215,141,0);}100%{box-shadow:0 0 0 0 rgba(72,215,141,0);}}
+  .sc-meta{font-size:12px;color:var(--muted);margin-top:5px;}
+  .sc-money{display:flex;gap:10px;margin:13px 0 4px;}
+  .money-block{flex:1;background:var(--panel2);border:1px solid var(--border);border-radius:12px;padding:9px 11px;}
+  .money-block label{font-size:10px;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);}
+  .money-block .val{font-size:21px;font-weight:800;margin-top:2px;}
+  .sc-actions{display:flex;gap:8px;margin-top:12px;}
+  .bonus-list{margin-top:12px;display:flex;flex-direction:column;gap:6px;}
+  .bonus-row{display:flex;align-items:center;gap:8px;font-size:13px;background:var(--panel2);
+    border:1px solid var(--border);border-radius:10px;padding:8px 10px;}
+  .bonus-row .b-mult{font-weight:800;color:var(--gold);min-width:62px;}
+  .bonus-row .b-amt{font-weight:600;}
+  .bonus-row .b-x{margin-left:auto;color:var(--faint);cursor:pointer;font-size:16px;padding:0 4px;}
+  .jackpot-badge{font-size:9px;font-weight:800;letter-spacing:.5px;background:var(--gold);color:#241c00;
+    padding:2px 6px;border-radius:5px;text-transform:uppercase;}
+  .sc-notes{font-size:12px;color:var(--muted);margin-top:10px;font-style:italic;}
+
+  /* closed session rows */
+  .sess-row{display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--border);
+    border-radius:13px;padding:11px 13px;margin-top:8px;cursor:pointer;transition:border-color .15s;}
+  .sess-row:active{border-color:var(--gold-dim);}
+  .sess-row .sr-main{flex:1;min-width:0;}
+  .sess-row .sr-name{font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .sess-row .sr-sub{font-size:11px;color:var(--muted);margin-top:2px;}
+  .sess-row .sr-net{font-size:17px;font-weight:800;text-align:right;white-space:nowrap;}
+
+  .empty{text-align:center;color:var(--faint);font-size:13px;padding:26px 10px;}
+
+  /* ── Buttons ────────────────────────────────────────────── */
+  button{font-family:inherit;cursor:pointer;border:none;}
+  .btn{flex:1;padding:11px;border-radius:12px;font-size:14px;font-weight:700;background:var(--panel2);
+    color:var(--text);border:1px solid var(--border);transition:transform .06s,filter .15s;}
+  .btn:active{transform:scale(.97);}
+  .btn.primary{background:linear-gradient(180deg,var(--gold) 0%,var(--gold-dim) 100%);color:#241c00;border-color:var(--gold-dim);}
+  .btn.win{background:linear-gradient(180deg,#4fe0955c,#1f5c3f4a);border-color:#2e6f4d;color:var(--win);}
+  .btn.danger{background:transparent;border-color:#5a2b2b;color:var(--loss);}
+  .btn:disabled{opacity:.45;}
+  .btn-lg{width:100%;padding:14px;font-size:15px;}
+  .icon-btn{background:var(--chip);border:1px solid var(--border);color:var(--muted);width:34px;height:34px;
+    border-radius:10px;font-size:16px;display:flex;align-items:center;justify-content:center;flex:0 0 auto;}
+
+  /* ── Stat tiles ─────────────────────────────────────────── */
+  .tile-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .tile{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:13px;}
+  .tile .t-label{font-size:10px;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);}
+  .tile .t-val{font-size:22px;font-weight:800;margin-top:5px;letter-spacing:-.5px;}
+  .tile.span2{grid-column:span 2;}
+  .bar-row{display:flex;align-items:center;gap:10px;font-size:13px;margin-top:9px;}
+  .bar-row .br-name{width:38%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .bar-track{flex:1;height:8px;background:var(--panel2);border-radius:6px;overflow:hidden;position:relative;}
+  .bar-fill{height:100%;border-radius:6px;}
+  .bar-row .br-val{width:64px;text-align:right;font-weight:700;}
+  .jp-row{display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--border);
+    border-radius:12px;padding:10px 12px;margin-top:8px;}
+  .jp-row .jp-amt{font-weight:800;color:var(--gold);}
+  .jp-row .jp-main{flex:1;min-width:0;}
+  .jp-row .jp-sub{font-size:11px;color:var(--muted);}
+
+  /* ── Bottom sheet / modal ───────────────────────────────── */
+  #sheet{position:fixed;inset:0;z-index:100;display:none;align-items:flex-end;justify-content:center;
+    background:rgba(0,0,0,.55);backdrop-filter:blur(3px);}
+  #sheet.show{display:flex;}
+  .sheet-panel{width:100%;max-width:520px;background:var(--panel);border:1px solid var(--border);
+    border-radius:20px 20px 0 0;padding:18px 16px calc(20px + var(--safe-bottom));max-height:92vh;overflow-y:auto;
+    box-shadow:0 -10px 40px rgba(0,0,0,.5);animation:slideUp .22s ease;}
+  @keyframes slideUp{from{transform:translateY(40px);opacity:.6;}to{transform:translateY(0);opacity:1;}}
+  .sheet-grip{width:38px;height:4px;background:var(--border);border-radius:3px;margin:0 auto 12px;}
+  #sheet-title{font-size:18px;font-weight:800;margin-bottom:14px;}
+  label.field{display:block;margin:12px 0 6px;font-size:12px;color:var(--muted);letter-spacing:.3px;}
+  input,select,textarea{width:100%;padding:12px;border-radius:12px;border:1px solid var(--border);
+    background:var(--panel2);color:var(--text);font-size:16px;font-family:inherit;}
+  input:focus,select,textarea:focus{outline:none;border-color:var(--gold-dim);}
+  textarea{min-height:60px;resize:vertical;}
+  .row2{display:flex;gap:10px;}.row2>*{flex:1;}
+  .money-input{position:relative;}
+  .money-input input{padding-left:26px;font-size:22px;font-weight:700;}
+  .money-input .dollar{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:18px;font-weight:700;}
+  .seg{display:flex;gap:6px;}
+  .seg button{flex:1;padding:9px;border-radius:10px;background:var(--panel2);border:1px solid var(--border);
+    color:var(--muted);font-size:12px;font-weight:700;}
+  .seg button.sel{background:var(--gold);color:#241c00;border-color:var(--gold-dim);}
+  .toggle-row{display:flex;align-items:center;justify-content:space-between;margin-top:14px;
+    background:var(--panel2);border:1px solid var(--border);border-radius:12px;padding:11px 13px;}
+  .toggle-row .tr-label{font-size:13px;}
+  .switch{width:46px;height:27px;border-radius:20px;background:var(--border);position:relative;flex:0 0 auto;transition:background .2s;}
+  .switch.on{background:var(--gold);}
+  .switch::after{content:"";position:absolute;top:3px;left:3px;width:21px;height:21px;border-radius:50%;
+    background:#fff;transition:transform .2s;}
+  .switch.on::after{transform:translateX(19px);}
+  .mult-preview{text-align:center;font-size:14px;color:var(--muted);margin-top:12px;}
+  .mult-preview b{font-size:26px;color:var(--gold);display:block;font-weight:800;}
+  .sheet-actions{display:flex;gap:10px;margin-top:20px;}
+
+  /* ── Bottom nav ─────────────────────────────────────────── */
+  #nav{position:fixed;left:0;right:0;bottom:0;z-index:50;display:flex;justify-content:center;
+    background:rgba(13,20,17,.92);backdrop-filter:blur(12px);border-top:1px solid var(--border);
+    padding-bottom:var(--safe-bottom);}
+  #nav .nav-inner{display:flex;width:100%;max-width:520px;}
+  .nav-btn{flex:1;background:none;border:none;color:var(--faint);padding:9px 4px 8px;display:flex;
+    flex-direction:column;align-items:center;gap:3px;font-size:10px;font-weight:600;letter-spacing:.2px;}
+  .nav-btn .ic{font-size:20px;line-height:1;filter:grayscale(1) opacity(.6);}
+  .nav-btn.sel{color:var(--gold);}
+  .nav-btn.sel .ic{filter:none;}
+
+  #version-tag{position:fixed;bottom:calc(60px + var(--safe-bottom));right:8px;font-size:9px;color:var(--faint);
+    font-family:monospace;z-index:40;pointer-events:none;}
+  #mock-flag{position:fixed;top:0;left:0;right:0;background:var(--gold);color:#241c00;font-size:11px;
+    font-weight:700;text-align:center;padding:3px;z-index:200;display:none;}
+</style>
+</head>
+<body>
+
+<div id="mock-flag">DEMO MODE — mock data, nothing is saved</div>
+<div id="auth-status">Connecting to Discord…<div id="auth-debug"></div></div>
+<div id="version-tag"></div>
+
+<div id="app">
+  <!-- ── TODAY ─────────────────────────────────────────────── -->
+  <div id="screen-today" class="screen">
+    <div class="day-header">
+      <div class="day-date" id="day-date"></div>
+      <div class="day-net" id="day-net">$0</div>
+      <div class="day-sub" id="day-sub"></div>
+    </div>
+    <div id="trip-banner"></div>
+    <div class="fast-select" id="fast-select"></div>
+    <div id="active-sessions"></div>
+    <div class="section-label">Today's sessions</div>
+    <div id="today-sessions"></div>
+  </div>
+
+  <!-- ── HISTORY ───────────────────────────────────────────── -->
+  <div id="screen-history" class="screen">
+    <h1 style="font-size:22px;margin:6px 2px 4px;">History</h1>
+    <div id="history-body"></div>
+  </div>
+
+  <!-- ── STATS ─────────────────────────────────────────────── -->
+  <div id="screen-stats" class="screen">
+    <h1 style="font-size:22px;margin:6px 2px 4px;">Lifetime Stats</h1>
+    <div id="stats-body"></div>
+  </div>
+
+  <!-- ── BANKROLL ──────────────────────────────────────────── -->
+  <div id="screen-bankroll" class="screen">
+    <h1 style="font-size:22px;margin:6px 2px 4px;">Bankroll</h1>
+    <div id="bankroll-body"></div>
+  </div>
+
+  <!-- ── GAMES ─────────────────────────────────────────────── -->
+  <div id="screen-games" class="screen">
+    <h1 style="font-size:22px;margin:6px 2px 10px;">Fast-Select Games</h1>
+    <div id="games-body"></div>
+    <button class="btn primary btn-lg" style="margin-top:14px;" onclick="openGameSheet()">+ Add a game</button>
+  </div>
+</div>
+
+<div id="sheet"><div class="sheet-panel"><div class="sheet-grip"></div>
+  <div id="sheet-title"></div><div id="sheet-body"></div>
+</div></div>
+
+<nav id="nav"><div class="nav-inner">
+  <button class="nav-btn" data-tab="today"><span class="ic">🎰</span>Today</button>
+  <button class="nav-btn" data-tab="history"><span class="ic">📜</span>History</button>
+  <button class="nav-btn" data-tab="stats"><span class="ic">📊</span>Stats</button>
+  <button class="nav-btn" data-tab="bankroll"><span class="ic">💰</span>Bankroll</button>
+  <button class="nav-btn" data-tab="games"><span class="ic">🎯</span>Games</button>
+</div></nav>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════════════
+//  Casino Session Tracker — Discord Activity frontend
+//  Mirrors the raided-hex Activity stack: Discord-OAuth identity, Supabase-backed
+//  Edge Functions (ct-auth / ct-whoami / ct-data / ct-write), session-token'd.
+// ═══════════════════════════════════════════════════════════════════════════
+const APP_VERSION='0.1.0';
+document.getElementById('version-tag').textContent='v'+APP_VERSION;
+
+// ── Config ─────────────────────────────────────────────────────────────────
+function isDiscordActivity(){return location.hostname.endsWith('.discordsays.com')||new URLSearchParams(location.search).has('frame_id');}
+function withTimeout(p,ms,label){return Promise.race([p,new Promise((_,r)=>setTimeout(()=>r(new Error(label+' timed out')),ms))]);}
+const MOCK=new URLSearchParams(location.search).has('mock');
+
+// Same Supabase project as raided-hex → same URL + publishable anon key.
+const SUPABASE_URL=isDiscordActivity()?(location.origin+'/.proxy/supabase'):'https://uaoxvhihwiygrajicend.supabase.co';
+const FUNCTIONS_URL=SUPABASE_URL+'/functions/v1';
+const SUPABASE_ANON_KEY='sb_publishable_91Zn_uJ9anW46vAClx6-bQ__wLL4fXl';
+// TODO: replace after creating the tracker's Discord application (Developer Portal).
+const DISCORD_CLIENT_ID='REPLACE_WITH_TRACKER_DISCORD_CLIENT_ID';
+const SESSION_KEY='casino_tracker_session';
+
+// ── App state ──────────────────────────────────────────────────────────────
+let sessionToken=null;
+let account=null;
+let state={today:todayLocal(),games:[],active_trip:null,active_trip_totals:null,sessions:[]};
+let currentTab='today';
+
+// ── Formatting helpers ─────────────────────────────────────────────────────
+function todayLocal(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
+function num(v){return Number(v||0);}
+function money(n){
+  n=num(n);const neg=n<0;const abs=Math.abs(n);
+  const s=abs%1===0?abs.toLocaleString('en-US'):abs.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+  return (neg?'-$':'$')+s;
+}
+function signMoney(n){n=num(n);return (n>0?'+':n<0?'-':'')+'$'+Math.abs(n).toLocaleString('en-US',{maximumFractionDigits:2});}
+function netClass(n){return num(n)>0?'win':num(n)<0?'loss':'';}
+function fmtMult(m){return m==null?'—':(num(m).toFixed(num(m)>=100?0:1)+'×');}
+function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function catIcon(c){return {slot:'🎰',video_poker:'🃏',table:'♠️',other:'🎲'}[c]||'🎲';}
+function catLabel(c){return {slot:'Slot',video_poker:'Video Poker',table:'Table',other:'Other'}[c]||'Other';}
+function isSlotty(c){return c==='slot'||c==='video_poker';}
+function sessNet(s){return num(s.cash_out)-num(s.buy_in_total);}
+function isOpen(s){return s.cash_out===null||s.cash_out===undefined;}
+function prettyDate(iso){const [y,m,d]=iso.split('-').map(Number);const dt=new Date(y,m-1,d);
+  return dt.toLocaleDateString(undefined,{weekday:'long',month:'short',day:'numeric'});}
+
+// ── API layer (real Edge Functions, or the mock engine below) ───────────────
+async function callFn(name,payload){
+  const res=await fetch(FUNCTIONS_URL+'/'+name,{method:'POST',
+    headers:{'Content-Type':'application/json','Authorization':'Bearer '+SUPABASE_ANON_KEY,'apikey':SUPABASE_ANON_KEY},
+    body:JSON.stringify(payload||{})});
+  return res.json();
+}
+async function api(name,payload){
+  if(MOCK)return mockApi(name,payload);
+  return callFn(name,{...payload,session_token:sessionToken,today:state.today});
+}
+// Apply a bootstrap payload returned by any read/write to local state.
+function applyBootstrap(b){if(!b)return;state={...state,...b};}
+
+// ── Discord entry ──────────────────────────────────────────────────────────
+async function runDiscordEntry(){
+  const statusEl=document.getElementById('auth-status');statusEl.classList.add('show');
+  try{
+    const {DiscordSDK}=window.DiscordSDKLib;
+    const sdk=new DiscordSDK(DISCORD_CLIENT_ID);
+    await withTimeout(sdk.ready(),20000,'Discord SDK ready()');
+    let code;
+    try{({code}=await sdk.commands.authorize({client_id:DISCORD_CLIENT_ID,response_type:'code',state:'',prompt:'none',scope:['identify']}));}
+    catch(e){({code}=await sdk.commands.authorize({client_id:DISCORD_CLIENT_ID,response_type:'code',state:'',prompt:'consent',scope:['identify']}));}
+    const data=await callFn('ct-auth',{code,today:state.today});
+    if(!data.ok||!data.account)throw new Error(data.message||'Sign-in failed.');
+    localStorage.setItem(SESSION_KEY,data.account.session_token);
+    boot(data.account,data.bootstrap);
+  }catch(e){
+    console.error('Discord entry failed:',e);
+    await tryRestoreSession();
+    if(!account){document.getElementById('auth-debug').textContent='Debug: '+((e&&e.message)||e);}
+  }finally{if(account)statusEl.classList.remove('show');}
+}
+async function tryRestoreSession(){
+  const token=localStorage.getItem(SESSION_KEY);if(!token)return;
+  sessionToken=token;
+  const data=await callFn('ct-whoami',{session_token:token,today:state.today}).catch(e=>({ok:false,message:String(e)}));
+  if(!data.ok||!data.account){localStorage.removeItem(SESSION_KEY);sessionToken=null;return;}
+  boot(data.account,data.bootstrap);
+}
+
+function boot(acct,bootstrap){
+  account=acct;sessionToken=acct.session_token||sessionToken;
+  applyBootstrap(bootstrap);
+  document.getElementById('auth-status').classList.remove('show');
+  document.getElementById('app').classList.add('show');
+  setTab('today');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Rendering
+// ═══════════════════════════════════════════════════════════════════════════
+function setTab(tab){
+  currentTab=tab;
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('show'));
+  document.getElementById('screen-'+tab).classList.add('show');
+  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.toggle('sel',b.dataset.tab===tab));
+  window.scrollTo(0,0);
+  if(tab==='today')renderToday();
+  if(tab==='history')loadHistory();
+  if(tab==='stats')loadStats();
+  if(tab==='bankroll')renderBankroll();
+  if(tab==='games')renderGames();
+}
+document.querySelectorAll('.nav-btn').forEach(b=>b.addEventListener('click',()=>setTab(b.dataset.tab)));
+
+// ── Today ──────────────────────────────────────────────────────────────────
+function renderToday(){
+  const sessions=state.sessions||[];
+  const dayIn=sessions.reduce((s,x)=>s+num(x.buy_in_total),0);
+  const dayOut=sessions.reduce((s,x)=>s+num(x.cash_out),0);
+  const dayNet=dayOut-dayIn;
+  document.getElementById('day-date').textContent=prettyDate(state.today);
+  const netEl=document.getElementById('day-net');
+  netEl.textContent=signMoney(dayNet);netEl.className='day-net '+netClass(dayNet);
+  document.getElementById('day-sub').innerHTML=
+    `<span>In <b>${money(dayIn)}</b></span><span>Out <b>${money(dayOut)}</b></span><span><b>${sessions.length}</b> session${sessions.length===1?'':'s'}</span>`;
+
+  // Trip banner
+  const tb=document.getElementById('trip-banner');
+  if(state.active_trip&&state.active_trip_totals){
+    const t=state.active_trip,tt=state.active_trip_totals;
+    tb.innerHTML=`<div class="trip-banner">
+      <div><div class="tb-name">💰 ${esc(t.name)}</div>
+        <div class="tb-sub">${t.casino?esc(t.casino)+' · ':''}Bankroll ${money(t.starting_bankroll)} · Net ${signMoney(tt.net)}</div></div>
+      <div class="tb-remain"><div class="n ${netClass(tt.remaining-num(t.starting_bankroll))}">${money(tt.remaining)}</div><div class="l">in pocket</div></div>
+    </div>`;
+  }else tb.innerHTML='';
+
+  // Fast select
+  const fs=document.getElementById('fast-select');
+  const games=(state.games||[]);
+  fs.innerHTML=games.map(g=>`<div class="fast-chip" data-game="${g.id}">
+      <div class="fc-cat">${catIcon(g.category)}</div>
+      <div class="fc-name">${esc(g.name)}</div>
+      <div class="fc-sub">${g.default_bet!=null?money(g.default_bet)+' bet':catLabel(g.category)}</div>
+    </div>`).join('')+`<div class="fast-chip new" data-game="__new">+ New</div>`;
+  fs.querySelectorAll('[data-game]').forEach(el=>el.addEventListener('click',()=>{
+    if(el.dataset.game==='__new')openSessionSheet();
+    else openSessionSheet(games.find(g=>g.id===el.dataset.game));
+  }));
+
+  // Active session cards
+  const activeWrap=document.getElementById('active-sessions');
+  const open=sessions.filter(isOpen);
+  activeWrap.innerHTML=open.map(renderActiveCard).join('');
+  bindActiveCards();
+
+  // Closed sessions
+  const closed=sessions.filter(s=>!isOpen(s));
+  const list=document.getElementById('today-sessions');
+  if(closed.length===0&&open.length===0){list.innerHTML='<div class="empty">No sessions yet today.<br>Tap a game above to start one.</div>';}
+  else if(closed.length===0){list.innerHTML='<div class="empty">No closed sessions yet today.</div>';}
+  else list.innerHTML=closed.map(sessRow).join('');
+  list.querySelectorAll('[data-sess]').forEach(el=>el.addEventListener('click',()=>openEditSession(el.dataset.sess)));
+}
+
+function renderActiveCard(s){
+  const net=sessNet(s);const bonuses=s.ct_bonuses||[];
+  const meta=[s.denom!=null?money(s.denom)+' denom':null,s.bet_size!=null?money(s.bet_size)+' bet':null,s.casino].filter(Boolean).join(' · ');
+  return `<div class="card session-card active" data-active="${s.id}">
+    <div class="sc-head">
+      <div class="sc-title"><span class="live-dot"></span>${esc(s.game_name)} <span class="cat-chip">${catLabel(s.category)}</span></div>
+      <button class="icon-btn" data-edit="${s.id}">⋯</button>
+    </div>
+    ${meta?`<div class="sc-meta">${esc(meta)}</div>`:''}
+    <div class="sc-money">
+      <div class="money-block"><label>Bought in</label><div class="val">${money(s.buy_in_total)}</div></div>
+      <div class="money-block"><label>Net so far</label><div class="val ${netClass(net)}">${signMoney(net)}</div></div>
+    </div>
+    <div class="sc-actions">
+      <button class="btn" data-buyin="${s.id}">+ Buy-in</button>
+      ${isSlotty(s.category)?`<button class="btn" data-bonus="${s.id}">✨ Bonus</button>`:''}
+      <button class="btn primary" data-cashout="${s.id}">Cash out</button>
+    </div>
+    ${bonuses.length?`<div class="bonus-list">${bonuses.map(b=>bonusRow(b)).join('')}</div>`:''}
+    ${s.notes?`<div class="sc-notes">“${esc(s.notes)}”</div>`:''}
+  </div>`;
+}
+function bonusRow(b){
+  return `<div class="bonus-row">
+    <span class="b-mult">${fmtMult(b.multiple)}</span>
+    <span class="b-amt">${money(b.amount)}</span>
+    ${b.is_jackpot?'<span class="jackpot-badge">W-2G</span>':''}
+    <span class="b-x" data-delbonus="${b.id}">×</span>
+  </div>`;
+}
+function sessRow(s){
+  const net=sessNet(s);const nb=(s.ct_bonuses||[]).length;
+  return `<div class="sess-row" data-sess="${s.id}">
+    <div class="sr-main">
+      <div class="sr-name">${catIcon(s.category)} ${esc(s.game_name)}</div>
+      <div class="sr-sub">${money(s.buy_in_total)} → ${money(s.cash_out)}${nb?` · ${nb} bonus${nb===1?'':'es'}`:''}</div>
+    </div>
+    <div class="sr-net ${netClass(net)}">${signMoney(net)}</div>
+  </div>`;
+}
+function bindActiveCards(){
+  const w=document.getElementById('active-sessions');
+  w.querySelectorAll('[data-buyin]').forEach(b=>b.addEventListener('click',()=>openBuyinSheet(b.dataset.buyin)));
+  w.querySelectorAll('[data-bonus]').forEach(b=>b.addEventListener('click',()=>openBonusSheet(b.dataset.bonus)));
+  w.querySelectorAll('[data-cashout]').forEach(b=>b.addEventListener('click',()=>openCashoutSheet(b.dataset.cashout)));
+  w.querySelectorAll('[data-edit]').forEach(b=>b.addEventListener('click',()=>openEditSession(b.dataset.edit)));
+  w.querySelectorAll('[data-delbonus]').forEach(b=>b.addEventListener('click',async()=>{
+    const r=await api('ct-write',{action:'delete-bonus',id:b.dataset.delbonus});afterWrite(r);}));
+}
+function findSession(id){return (state.sessions||[]).find(s=>s.id===id);}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Bottom-sheet modal
+// ═══════════════════════════════════════════════════════════════════════════
+function openSheet(title,html,onMount){
+  document.getElementById('sheet-title').textContent=title;
+  document.getElementById('sheet-body').innerHTML=html;
+  document.getElementById('sheet').classList.add('show');
+  if(onMount)onMount();
+}
+function closeSheet(){document.getElementById('sheet').classList.remove('show');}
+document.getElementById('sheet').addEventListener('click',e=>{if(e.target.id==='sheet')closeSheet();});
+
+// After any mutation: apply returned bootstrap, re-render current tab.
+function afterWrite(resp){
+  if(!resp||!resp.ok){if(resp&&resp.message)alert(resp.message);return false;}
+  applyBootstrap(resp.bootstrap);
+  closeSheet();
+  if(currentTab==='today')renderToday();
+  else if(currentTab==='bankroll')renderBankroll();
+  else if(currentTab==='games')renderGames();
+  else if(currentTab==='history')loadHistory();
+  else if(currentTab==='stats')loadStats();
+  return true;
+}
+
+// Category segmented control markup + wiring.
+function segMarkup(sel){return ['slot','video_poker','table','other'].map(c=>
+  `<button type="button" class="${c===sel?'sel':''}" data-cat="${c}">${catIcon(c)} ${catLabel(c)}</button>`).join('');}
+
+// ── New / edit session ──────────────────────────────────────────────────────
+function openSessionSheet(game){
+  const g=game||{};
+  const cat=g.category||'slot';
+  openSheet(game?('Start: '+g.name):'New session',`
+    <label class="field">Game / machine</label>
+    <input id="f-name" placeholder="e.g. Lightning Link" value="${esc(g.name||'')}">
+    <label class="field">Type</label>
+    <div class="seg" id="f-cat">${segMarkup(cat)}</div>
+    <div id="f-slotfields" style="${isSlotty(cat)?'':'display:none'}">
+      <div class="row2">
+        <div><label class="field">Denomination</label><input id="f-denom" inputmode="decimal" placeholder="1.00" value="${g.default_denom??''}"></div>
+        <div><label class="field">Base bet ($/spin)</label><input id="f-bet" inputmode="decimal" placeholder="2.50" value="${g.default_bet??''}"></div>
+      </div>
+    </div>
+    <label class="field">Opening buy-in</label>
+    <div class="money-input"><span class="dollar">$</span><input id="f-buyin" inputmode="decimal" placeholder="100"></div>
+    <label class="field">Casino (optional)</label>
+    <input id="f-casino" placeholder="${esc(state.active_trip?.casino||'e.g. Bellagio')}" value="${esc(state.active_trip?.casino||'')}">
+    <div class="sheet-actions">
+      <button class="btn" onclick="closeSheet()">Cancel</button>
+      <button class="btn primary" id="f-start">Start session</button>
+    </div>
+  `,()=>{
+    let selCat=cat;
+    document.querySelectorAll('#f-cat button').forEach(b=>b.addEventListener('click',()=>{
+      selCat=b.dataset.cat;
+      document.querySelectorAll('#f-cat button').forEach(x=>x.classList.toggle('sel',x===b));
+      document.getElementById('f-slotfields').style.display=isSlotty(selCat)?'':'none';
+    }));
+    document.getElementById('f-start').addEventListener('click',async()=>{
+      const payload={action:'save-session',
+        game_id:g.id||null,game_name:document.getElementById('f-name').value.trim()||g.name||'Untitled',
+        category:selCat,casino:document.getElementById('f-casino').value.trim()||null,
+        denom:isSlotty(selCat)?document.getElementById('f-denom').value:null,
+        bet_size:isSlotty(selCat)?document.getElementById('f-bet').value:null,
+        buy_in:document.getElementById('f-buyin').value||null,
+        trip_id:state.active_trip?.id||null,session_date:state.today};
+      afterWrite(await api('ct-write',payload));
+    });
+  });
+}
+
+function openEditSession(id){
+  const s=findSession(id);if(!s)return;
+  openSheet('Edit session',`
+    <label class="field">Game / machine</label>
+    <input id="e-name" value="${esc(s.game_name)}">
+    <label class="field">Type</label>
+    <div class="seg" id="e-cat">${segMarkup(s.category)}</div>
+    <div class="row2"><div><label class="field">Denomination</label><input id="e-denom" inputmode="decimal" value="${s.denom??''}"></div>
+      <div><label class="field">Base bet</label><input id="e-bet" inputmode="decimal" value="${s.bet_size??''}"></div></div>
+    <label class="field">Casino</label><input id="e-casino" value="${esc(s.casino||'')}">
+    <label class="field">Notes</label><textarea id="e-notes" placeholder="Anything worth remembering…">${esc(s.notes||'')}</textarea>
+    ${isOpen(s)?'':`<label class="field">Cash-out</label><div class="money-input"><span class="dollar">$</span><input id="e-cashout" inputmode="decimal" value="${s.cash_out??''}"></div>`}
+    <div class="sheet-actions">
+      <button class="btn danger" id="e-del">Delete</button>
+      <button class="btn primary" id="e-save">Save</button>
+    </div>
+  `,()=>{
+    let selCat=s.category;
+    document.querySelectorAll('#e-cat button').forEach(b=>b.addEventListener('click',()=>{
+      selCat=b.dataset.cat;document.querySelectorAll('#e-cat button').forEach(x=>x.classList.toggle('sel',x===b));}));
+    document.getElementById('e-save').addEventListener('click',async()=>{
+      const p={action:'save-session',id:s.id,game_name:document.getElementById('e-name').value.trim(),
+        category:selCat,denom:document.getElementById('e-denom').value,bet_size:document.getElementById('e-bet').value,
+        casino:document.getElementById('e-casino').value.trim()||null,notes:document.getElementById('e-notes').value};
+      const co=document.getElementById('e-cashout');if(co)p.cash_out=co.value;
+      afterWrite(await api('ct-write',p));
+    });
+    document.getElementById('e-del').addEventListener('click',async()=>{
+      if(!confirm('Delete this session and its buy-ins/bonuses?'))return;
+      afterWrite(await api('ct-write',{action:'delete-session',id:s.id}));
+    });
+  });
+}
+
+// ── Add buy-in ───────────────────────────────────────────────────────────────
+function openBuyinSheet(sessionId){
+  const s=findSession(sessionId);
+  openSheet('Add buy-in',`
+    <div class="muted" style="font-size:13px;margin-bottom:8px;">${esc(s?.game_name||'')} · currently in ${money(s?.buy_in_total)}</div>
+    <label class="field">Amount</label>
+    <div class="money-input"><span class="dollar">$</span><input id="bi-amt" inputmode="decimal" placeholder="100" autofocus></div>
+    <div class="sheet-actions"><button class="btn" onclick="closeSheet()">Cancel</button>
+      <button class="btn primary" id="bi-add">Add buy-in</button></div>
+  `,()=>{
+    document.getElementById('bi-amt').focus();
+    document.getElementById('bi-add').addEventListener('click',async()=>{
+      const v=document.getElementById('bi-amt').value;if(!v)return;
+      afterWrite(await api('ct-write',{action:'add-buyin',session_id:sessionId,amount:v}));
+    });
+  });
+}
+
+// ── Add bonus (the headline feature) ─────────────────────────────────────────
+function openBonusSheet(sessionId){
+  const s=findSession(sessionId);
+  const baseBet=s?.bet_size??'';
+  openSheet('Log a bonus',`
+    <label class="field">Bonus / win amount</label>
+    <div class="money-input"><span class="dollar">$</span><input id="bo-amt" inputmode="decimal" placeholder="250"></div>
+    <label class="field">Base bet at hit</label>
+    <div class="money-input"><span class="dollar">$</span><input id="bo-bet" inputmode="decimal" value="${baseBet}" placeholder="2.50"></div>
+    <div class="mult-preview">Multiple of base bet<b id="bo-mult">—</b></div>
+    <div class="toggle-row"><div class="tr-label">W-2G jackpot (hand pay ≥ $1,200)</div>
+      <div class="switch" id="bo-jp"></div></div>
+    <div class="sheet-actions"><button class="btn" onclick="closeSheet()">Cancel</button>
+      <button class="btn primary" id="bo-add">Log bonus</button></div>
+  `,()=>{
+    const amt=document.getElementById('bo-amt'),bet=document.getElementById('bo-bet'),
+      mult=document.getElementById('bo-mult'),jp=document.getElementById('bo-jp');
+    let jpManual=false;
+    function recalc(){
+      const a=num(amt.value),b=num(bet.value);
+      mult.textContent=(a&&b)?(a/b).toFixed(1)+'×':'—';
+      if(!jpManual)jp.classList.toggle('on',a>=1200);
+    }
+    amt.addEventListener('input',recalc);bet.addEventListener('input',recalc);
+    jp.addEventListener('click',()=>{jpManual=true;jp.classList.toggle('on');});
+    amt.focus();recalc();
+    document.getElementById('bo-add').addEventListener('click',async()=>{
+      if(!amt.value)return;
+      afterWrite(await api('ct-write',{action:'add-bonus',session_id:sessionId,
+        amount:amt.value,base_bet:bet.value||null,is_jackpot:jp.classList.contains('on'),machine_name:s?.game_name}));
+    });
+  });
+}
+
+// ── Cash out ─────────────────────────────────────────────────────────────────
+function openCashoutSheet(sessionId){
+  const s=findSession(sessionId);
+  openSheet('Cash out',`
+    <div class="muted" style="font-size:13px;margin-bottom:8px;">${esc(s?.game_name||'')} · bought in ${money(s?.buy_in_total)}</div>
+    <label class="field">Cash-out amount</label>
+    <div class="money-input"><span class="dollar">$</span><input id="co-amt" inputmode="decimal" placeholder="0"></div>
+    <div class="mult-preview">Session net<b id="co-net">—</b></div>
+    <div class="sheet-actions"><button class="btn" onclick="closeSheet()">Cancel</button>
+      <button class="btn primary" id="co-done">End session</button></div>
+  `,()=>{
+    const amt=document.getElementById('co-amt'),net=document.getElementById('co-net');
+    function recalc(){const n=num(amt.value)-num(s?.buy_in_total);net.textContent=signMoney(n);
+      net.className='';net.classList.add(netClass(n));}
+    amt.addEventListener('input',recalc);amt.focus();recalc();
+    document.getElementById('co-done').addEventListener('click',async()=>{
+      const v=document.getElementById('co-amt').value||'0';
+      afterWrite(await api('ct-write',{action:'save-session',id:sessionId,cash_out:v}));
+    });
+  });
+}
+
+// ── History ──────────────────────────────────────────────────────────────────
+async function loadHistory(){
+  const body=document.getElementById('history-body');
+  body.innerHTML='<div class="empty">Loading…</div>';
+  const r=await api('ct-data',{view:'history'});
+  if(!r.ok){body.innerHTML='<div class="empty">Could not load history.</div>';return;}
+  const sessions=r.sessions||[];
+  if(sessions.length===0){body.innerHTML='<div class="empty">No sessions logged yet.</div>';return;}
+  const byDay={};
+  sessions.forEach(s=>{(byDay[s.session_date]=byDay[s.session_date]||[]).push(s);});
+  const days=Object.keys(byDay).sort().reverse();
+  body.innerHTML=days.map(d=>{
+    const list=byDay[d];
+    const net=list.reduce((x,s)=>x+sessNet(s),0);
+    return `<div class="section-label" style="display:flex;justify-content:space-between;">
+        <span>${prettyDate(d)}</span><span class="${netClass(net)}">${signMoney(net)}</span></div>
+      ${list.map(sessRowHist).join('')}`;
+  }).join('');
+  body.querySelectorAll('[data-hsess]').forEach(el=>el.addEventListener('click',()=>{
+    // Ensure the session is in state for the edit sheet, then open it.
+    const s=sessions.find(x=>x.id===el.dataset.hsess);
+    if(s&&!findSession(s.id))state.sessions=[...state.sessions,s];
+    openEditSession(el.dataset.hsess);
+  }));
+}
+function sessRowHist(s){
+  const net=sessNet(s);const nb=(s.ct_bonuses||[]).length;const open=isOpen(s);
+  return `<div class="sess-row" data-hsess="${s.id}">
+    <div class="sr-main"><div class="sr-name">${catIcon(s.category)} ${esc(s.game_name)}${open?' <span class="cat-chip">open</span>':''}</div>
+      <div class="sr-sub">${money(s.buy_in_total)}${open?'':' → '+money(s.cash_out)}${s.casino?' · '+esc(s.casino):''}${nb?` · ${nb}✨`:''}</div></div>
+    <div class="sr-net ${netClass(net)}">${open?'—':signMoney(net)}</div>
+  </div>`;
+}
+
+// ── Stats ────────────────────────────────────────────────────────────────────
+async function loadStats(){
+  const body=document.getElementById('stats-body');
+  body.innerHTML='<div class="empty">Loading…</div>';
+  const r=await api('ct-data',{view:'stats'});
+  if(!r.ok){body.innerHTML='<div class="empty">Could not load stats.</div>';return;}
+  const st=r.stats;
+  if(st.session_count===0&&st.open_count===0){body.innerHTML='<div class="empty">No data yet — log a few sessions first.</div>';return;}
+  const bb=st.biggest_bonus;
+  const maxAbs=Math.max(1,...st.by_game.map(g=>Math.abs(g.net)));
+  const casMax=Math.max(1,...st.by_casino.map(g=>Math.abs(g.net)));
+  body.innerHTML=`
+    <div class="tile span2" style="text-align:center;">
+      <div class="t-label">Lifetime net</div>
+      <div class="t-val ${netClass(st.lifetime_net)}" style="font-size:40px;">${signMoney(st.lifetime_net)}</div>
+      <div class="muted" style="font-size:12px;">${st.session_count} sessions · ${money(st.total_bought_in)} in · ${money(st.total_cashed_out)} out</div>
+    </div>
+    <div class="tile-grid" style="margin-top:10px;">
+      <div class="tile"><div class="t-label">Biggest win</div><div class="t-val win">${signMoney(st.biggest_win)}</div></div>
+      <div class="tile"><div class="t-label">Biggest loss</div><div class="t-val loss">${signMoney(st.biggest_loss)}</div></div>
+      <div class="tile"><div class="t-label">Best bonus</div><div class="t-val" style="color:var(--gold)">${bb?fmtMult(bb.multiple):'—'}</div>
+        <div class="muted" style="font-size:11px;">${bb?money(bb.amount)+(bb.machine_name?' · '+esc(bb.machine_name):''):'no bonuses yet'}</div></div>
+      <div class="tile"><div class="t-label">Bonuses won</div><div class="t-val">${money(st.total_bonus_won)}</div>
+        <div class="muted" style="font-size:11px;">${st.bonus_count} total</div></div>
+    </div>
+    ${st.by_game.length?`<div class="section-label">Net by game</div><div class="card">${st.by_game.map(g=>bar(g,maxAbs)).join('')}</div>`:''}
+    ${st.by_casino.length>0?`<div class="section-label">Net by casino</div><div class="card">${st.by_casino.map(g=>bar(g,casMax)).join('')}</div>`:''}
+    ${st.jackpots.length?`<div class="section-label">W-2G jackpots (≥ $1,200)</div>
+      <button class="btn" style="margin-bottom:8px;" onclick='copyJackpots(${JSON.stringify(st.jackpots).replace(/'/g,"&#39;")})'>📋 Copy list for taxes</button>
+      ${st.jackpots.map(jpRow).join('')}`:''}
+  `;
+}
+function bar(g,maxAbs){
+  const w=Math.round(Math.abs(g.net)/maxAbs*100);
+  const col=g.net>=0?'var(--win)':'var(--loss)';
+  return `<div class="bar-row"><span class="br-name">${esc(g.name)}</span>
+    <div class="bar-track"><div class="bar-fill" style="width:${w}%;background:${col};"></div></div>
+    <span class="br-val ${netClass(g.net)}">${signMoney(g.net)}</span></div>`;
+}
+function jpRow(j){
+  const sess=j.ct_sessions||{};const date=sess.session_date?prettyDate(sess.session_date):'';
+  return `<div class="jp-row"><div class="jp-amt">${money(j.amount)}</div>
+    <div class="jp-main"><div>${esc(j.machine_name||sess.game_name||'Jackpot')}</div>
+      <div class="jp-sub">${date}${sess.casino?' · '+esc(sess.casino):''}${j.multiple?' · '+fmtMult(j.multiple):''}</div></div></div>`;
+}
+function copyJackpots(list){
+  const lines=list.map(j=>{const s=j.ct_sessions||{};
+    return `${s.session_date||''}\t${money(j.amount)}\t${j.machine_name||s.game_name||''}\t${s.casino||''}`;});
+  const text='Date\tAmount\tMachine\tCasino\n'+lines.join('\n');
+  navigator.clipboard?.writeText(text).then(()=>alert('Copied '+list.length+' jackpots to clipboard.'),()=>alert(text));
+}
+
+// ── Bankroll ─────────────────────────────────────────────────────────────────
+function renderBankroll(){
+  const body=document.getElementById('bankroll-body');
+  const t=state.active_trip,tt=state.active_trip_totals;
+  if(t&&tt){
+    body.innerHTML=`<div class="card" style="text-align:center;">
+      <div class="t-label">${esc(t.name)}${t.casino?' · '+esc(t.casino):''}</div>
+      <div class="t-val ${netClass(tt.remaining-num(t.starting_bankroll))}" style="font-size:42px;margin:6px 0;">${money(tt.remaining)}</div>
+      <div class="muted" style="font-size:12px;">in pocket now</div>
+      <div class="tile-grid" style="margin-top:14px;">
+        <div class="tile"><div class="t-label">Started with</div><div class="t-val">${money(t.starting_bankroll)}</div></div>
+        <div class="tile"><div class="t-label">Trip net</div><div class="t-val ${netClass(tt.net)}">${signMoney(tt.net)}</div></div>
+        <div class="tile"><div class="t-label">Total in</div><div class="t-val">${money(tt.buyins)}</div></div>
+        <div class="tile"><div class="t-label">Total out</div><div class="t-val">${money(tt.cashouts)}</div></div>
+      </div>
+      <button class="btn danger btn-lg" style="margin-top:16px;" id="bk-close">End this trip</button>
+    </div>`;
+    document.getElementById('bk-close').addEventListener('click',async()=>{
+      if(!confirm('End '+t.name+'? Sessions stay logged; the bankroll banner just goes away.'))return;
+      afterWrite(await api('ct-write',{action:'close-trip',id:t.id}));
+    });
+  }else{
+    body.innerHTML=`<div class="empty">No active trip.</div>
+      <div class="card"><div style="font-weight:700;margin-bottom:4px;">Start a trip</div>
+      <div class="muted" style="font-size:12px;">Set a bankroll and every buy-in/cash-out today counts against it.</div>
+      <label class="field">Trip name</label><input id="bk-name" placeholder="Vegas — August">
+      <label class="field">Casino (optional)</label><input id="bk-casino" placeholder="Bellagio">
+      <label class="field">Starting bankroll</label>
+      <div class="money-input"><span class="dollar">$</span><input id="bk-roll" inputmode="decimal" placeholder="1000"></div>
+      <button class="btn primary btn-lg" style="margin-top:16px;" id="bk-start">Start trip</button></div>`;
+    document.getElementById('bk-start').addEventListener('click',async()=>{
+      afterWrite(await api('ct-write',{action:'save-trip',name:document.getElementById('bk-name').value.trim()||'Trip',
+        casino:document.getElementById('bk-casino').value.trim()||null,starting_bankroll:document.getElementById('bk-roll').value||0}));
+    });
+  }
+}
+
+// ── Games manager ────────────────────────────────────────────────────────────
+function renderGames(){
+  const body=document.getElementById('games-body');
+  const games=state.games||[];
+  if(games.length===0){body.innerHTML='<div class="empty">No fast-select games yet.<br>Add the machines/tables you play most.</div>';return;}
+  body.innerHTML=games.map(g=>`<div class="sess-row" data-editgame="${g.id}">
+      <div class="sr-main"><div class="sr-name">${catIcon(g.category)} ${esc(g.name)}</div>
+        <div class="sr-sub">${catLabel(g.category)}${g.default_bet!=null?' · '+money(g.default_bet)+' bet':''}${g.default_denom!=null?' · '+money(g.default_denom)+' denom':''}</div></div>
+      <button class="icon-btn" data-delgame="${g.id}">🗑</button>
+    </div>`).join('');
+  body.querySelectorAll('[data-editgame]').forEach(el=>el.addEventListener('click',e=>{
+    if(e.target.closest('[data-delgame]'))return;openGameSheet(games.find(g=>g.id===el.dataset.editgame));}));
+  body.querySelectorAll('[data-delgame]').forEach(el=>el.addEventListener('click',async()=>{
+    if(!confirm('Remove this game from fast-select?'))return;
+    afterWrite(await api('ct-write',{action:'delete-game',id:el.dataset.delgame}));}));
+}
+function openGameSheet(game){
+  const g=game||{};const cat=g.category||'slot';
+  openSheet(game?'Edit game':'Add a game',`
+    <label class="field">Name</label><input id="g-name" placeholder="Lightning Link" value="${esc(g.name||'')}">
+    <label class="field">Type</label><div class="seg" id="g-cat">${segMarkup(cat)}</div>
+    <div id="g-slot" style="${isSlotty(cat)?'':'display:none'}"><div class="row2">
+      <div><label class="field">Default denom</label><input id="g-denom" inputmode="decimal" value="${g.default_denom??''}"></div>
+      <div><label class="field">Default bet</label><input id="g-bet" inputmode="decimal" value="${g.default_bet??''}"></div></div></div>
+    <div class="sheet-actions"><button class="btn" onclick="closeSheet()">Cancel</button>
+      <button class="btn primary" id="g-save">Save</button></div>
+  `,()=>{
+    let selCat=cat;
+    document.querySelectorAll('#g-cat button').forEach(b=>b.addEventListener('click',()=>{
+      selCat=b.dataset.cat;document.querySelectorAll('#g-cat button').forEach(x=>x.classList.toggle('sel',x===b));
+      document.getElementById('g-slot').style.display=isSlotty(selCat)?'':'none';}));
+    document.getElementById('g-save').addEventListener('click',async()=>{
+      afterWrite(await api('ct-write',{action:'save-game',id:g.id||null,name:document.getElementById('g-name').value.trim(),
+        category:selCat,default_denom:isSlotty(selCat)?document.getElementById('g-denom').value:null,
+        default_bet:isSlotty(selCat)?document.getElementById('g-bet').value:null}));
+    });
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  MOCK ENGINE — ?mock=1 runs the whole app offline against in-memory data so the
+//  UI can be built/verified before the Discord+Supabase wiring exists. Mirrors the
+//  ct-write / ct-data server logic closely.
+// ═══════════════════════════════════════════════════════════════════════════
+let mockDB=null;
+function mockSeed(){
+  const t=todayLocal();
+  const dayAgo=(n)=>{const d=new Date();d.setDate(d.getDate()-n);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
+  let sid=0;const S=(o)=>({id:'s'+(++sid),account_id:'me',trip_id:'t1',game_id:null,notes:null,started_at:o.session_date+'T12:00:00',
+    buyins:[],bonuses:[],denom:null,bet_size:null,casino:'Bellagio',cash_out:null,...o});
+  const withBuyins=(s,amts)=>{s.buyins=amts.map((a,i)=>({id:s.id+'b'+i,session_id:s.id,amount:a}));s.buy_in_total=amts.reduce((x,y)=>x+y,0);return s;};
+  const withBonus=(s,list)=>{s.bonuses=list.map((b,i)=>({id:s.id+'x'+i,session_id:s.id,amount:b.amount,base_bet:b.base_bet,multiple:b.base_bet?b.amount/b.base_bet:null,is_jackpot:b.amount>=1200,machine_name:s.game_name}));return s;};
+  mockDB={
+    account:{id:'me',discord_username:'You (demo)',session_token:'mock'},
+    games:[
+      {id:'g1',name:'Lightning Link',category:'slot',default_denom:1,default_bet:2.5,sort_order:0,archived:false},
+      {id:'g2',name:'Buffalo Gold',category:'slot',default_denom:0.01,default_bet:1.5,sort_order:1,archived:false},
+      {id:'g3',name:'Dragon Link',category:'slot',default_denom:0.05,default_bet:5,sort_order:2,archived:false},
+      {id:'g4',name:'Blackjack',category:'table',default_denom:null,default_bet:null,sort_order:3,archived:false},
+      {id:'g5',name:'Dbl Double Bonus',category:'video_poker',default_denom:0.25,default_bet:1.25,sort_order:4,archived:false},
+    ],
+    trips:[{id:'t1',name:'Vegas — August',casino:'Bellagio',starting_bankroll:1000,started_at:dayAgo(2)+'T18:00:00',ended_at:null}],
+    sessions:[
+      withBonus(withBuyins(S({game_name:'Lightning Link',category:'slot',denom:1,bet_size:2.5,session_date:t,cash_out:null}),[200,100]),[{amount:250,base_bet:2.5},{amount:80,base_bet:2.5}]),
+      withBonus(withBuyins(S({game_name:'Buffalo Gold',category:'slot',denom:0.01,bet_size:1.5,session_date:t,cash_out:420}),[100]),[{amount:1500,base_bet:1.5}]),
+      withBuyins(S({game_name:'Blackjack',category:'table',session_date:t,cash_out:60}),[100]),
+      withBonus(withBuyins(S({game_name:'Dragon Link',category:'slot',denom:0.05,bet_size:5,session_date:dayAgo(1),cash_out:900}),[300]),[{amount:2000,base_bet:5}]),
+      withBuyins(S({game_name:'Blackjack',category:'table',session_date:dayAgo(1),cash_out:80,casino:'Bellagio'}),[200]),
+      withBonus(withBuyins(S({game_name:'Buffalo Gold',category:'slot',denom:0.01,bet_size:0.75,session_date:dayAgo(2),cash_out:40,casino:'Aria'}),[150]),[{amount:120,base_bet:0.75}]),
+    ],
+  };
+}
+function mockBootstrap(today){
+  const games=mockDB.games.filter(g=>!g.archived).sort((a,b)=>a.sort_order-b.sort_order);
+  const active_trip=mockDB.trips.find(t=>!t.ended_at)||null;
+  const sessions=mockDB.sessions.filter(s=>s.session_date===today)
+    .map(s=>({...s,ct_buyins:s.buyins,ct_bonuses:s.bonuses}));
+  let active_trip_totals=null;
+  if(active_trip){const ts=mockDB.sessions.filter(s=>s.trip_id===active_trip.id);
+    const buyins=ts.reduce((x,s)=>x+num(s.buy_in_total),0),cashouts=ts.reduce((x,s)=>x+num(s.cash_out),0);
+    active_trip_totals={buyins,cashouts,net:cashouts-buyins,remaining:num(active_trip.starting_bankroll)-buyins+cashouts};}
+  return {today,games,active_trip,active_trip_totals,sessions};
+}
+function mockRecompute(s){s.buy_in_total=s.buyins.reduce((x,b)=>x+num(b.amount),0);}
+function mockId(p){return p+Math.random().toString(36).slice(2,8);}
+async function mockApi(name,payload){
+  const today=payload.today||todayLocal();
+  if(name==='ct-auth'||name==='ct-whoami')return {ok:true,account:mockDB.account,bootstrap:mockBootstrap(today)};
+  if(name==='ct-data'){
+    if(payload.view==='history')return {ok:true,sessions:mockDB.sessions.slice().sort((a,b)=>a.session_date<b.session_date?1:-1).map(s=>({...s,ct_buyins:s.buyins,ct_bonuses:s.bonuses}))};
+    if(payload.view==='stats')return {ok:true,stats:mockStats()};
+    return {ok:true,bootstrap:mockBootstrap(today)};
+  }
+  if(name==='ct-write'){mockWrite(payload);return {ok:true,bootstrap:mockBootstrap(today)};}
+  return {ok:false,message:'mock: unknown '+name};
+}
+function mockWrite(b){
+  const find=id=>mockDB.sessions.find(s=>s.id===id);const a=b.action;
+  if(a==='save-session'){
+    if(b.id){const s=find(b.id);if(!s)return;
+      ['game_name','category','casino'].forEach(k=>{if(k in b)s[k]=b[k];});
+      if('denom' in b)s.denom=b.denom===''?null:num(b.denom);
+      if('bet_size' in b)s.bet_size=b.bet_size===''?null:num(b.bet_size);
+      if('notes' in b)s.notes=b.notes;
+      if('cash_out' in b)s.cash_out=b.cash_out===''||b.cash_out==null?null:num(b.cash_out);
+    }else{const s={id:mockId('s'),account_id:'me',trip_id:b.trip_id||null,game_id:b.game_id||null,game_name:b.game_name||'Untitled',
+      category:b.category||'slot',casino:b.casino||null,denom:b.denom?num(b.denom):null,bet_size:b.bet_size?num(b.bet_size):null,
+      notes:null,buy_in_total:0,cash_out:'cash_out' in b?(b.cash_out?num(b.cash_out):null):null,session_date:b.session_date||todayLocal(),
+      started_at:new Date().toISOString(),buyins:[],bonuses:[]};
+      if(b.buy_in){s.buyins.push({id:mockId('b'),session_id:s.id,amount:num(b.buy_in)});mockRecompute(s);}
+      mockDB.sessions.push(s);}
+  }else if(a==='delete-session'){mockDB.sessions=mockDB.sessions.filter(s=>s.id!==b.id);}
+  else if(a==='add-buyin'){const s=find(b.session_id);if(s){s.buyins.push({id:mockId('b'),session_id:s.id,amount:num(b.amount)});mockRecompute(s);}}
+  else if(a==='delete-buyin'){mockDB.sessions.forEach(s=>{const n=s.buyins.length;s.buyins=s.buyins.filter(x=>x.id!==b.id);if(s.buyins.length!==n)mockRecompute(s);});}
+  else if(a==='add-bonus'){const s=find(b.session_id);if(s){const bb=b.base_bet?num(b.base_bet):num(s.bet_size);
+    s.bonuses.push({id:mockId('x'),session_id:s.id,amount:num(b.amount),base_bet:bb||null,multiple:bb?num(b.amount)/bb:null,is_jackpot:!!b.is_jackpot,machine_name:b.machine_name||s.game_name});}}
+  else if(a==='delete-bonus'){mockDB.sessions.forEach(s=>s.bonuses=s.bonuses.filter(x=>x.id!==b.id));}
+  else if(a==='save-game'){if(b.id){const g=mockDB.games.find(x=>x.id===b.id);if(g)Object.assign(g,{name:b.name,category:b.category,default_denom:b.default_denom?num(b.default_denom):null,default_bet:b.default_bet?num(b.default_bet):null});}
+    else mockDB.games.push({id:mockId('g'),name:b.name,category:b.category,default_denom:b.default_denom?num(b.default_denom):null,default_bet:b.default_bet?num(b.default_bet):null,sort_order:mockDB.games.length,archived:false});}
+  else if(a==='delete-game'){const g=mockDB.games.find(x=>x.id===b.id);if(g)g.archived=true;}
+  else if(a==='save-trip'){if(b.id){const t=mockDB.trips.find(x=>x.id===b.id);if(t)Object.assign(t,{name:b.name,casino:b.casino,starting_bankroll:num(b.starting_bankroll)});}
+    else mockDB.trips.push({id:mockId('t'),name:b.name,casino:b.casino,starting_bankroll:num(b.starting_bankroll),started_at:new Date().toISOString(),ended_at:null});}
+  else if(a==='close-trip'){const t=mockDB.trips.find(x=>x.id===b.id);if(t)t.ended_at=new Date().toISOString();}
+}
+function mockStats(){
+  const sessions=mockDB.sessions;const closed=sessions.filter(s=>s.cash_out!=null);
+  const net=s=>num(s.cash_out)-num(s.buy_in_total);
+  const bonuses=sessions.flatMap(s=>s.bonuses.map(b=>({...b,ct_sessions:{game_name:s.game_name,casino:s.casino,session_date:s.session_date}})));
+  const group=(key)=>{const m={};closed.forEach(s=>{const k=s[key]||(key==='casino'?'Unspecified':'Unknown');(m[k]=m[k]||{name:k,net:0,count:0,bought_in:0});m[k].net+=net(s);m[k].count++;m[k].bought_in+=num(s.buy_in_total);});return Object.values(m).sort((a,b)=>b.net-a.net);};
+  const nets=closed.map(net);
+  let biggest_bonus=null;bonuses.forEach(b=>{if(!biggest_bonus||num(b.multiple)>num(biggest_bonus.multiple))biggest_bonus=b;});
+  return {lifetime_net:nets.reduce((a,b)=>a+b,0),total_bought_in:sessions.reduce((a,s)=>a+num(s.buy_in_total),0),
+    total_cashed_out:closed.reduce((a,s)=>a+num(s.cash_out),0),session_count:closed.length,open_count:sessions.length-closed.length,
+    biggest_win:nets.length?Math.max(...nets):0,biggest_loss:nets.length?Math.min(...nets):0,biggest_bonus,
+    total_bonus_won:bonuses.reduce((a,b)=>a+num(b.amount),0),bonus_count:bonuses.length,
+    by_game:group('game_name'),by_casino:group('casino'),jackpots:bonuses.filter(b=>b.is_jackpot).sort((a,b)=>num(b.amount)-num(a.amount))};
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Entry point
+// ═══════════════════════════════════════════════════════════════════════════
+if(MOCK){
+  document.getElementById('mock-flag').style.display='block';
+  mockSeed();
+  boot(mockDB.account,mockBootstrap(todayLocal()));
+}else if(isDiscordActivity()){
+  runDiscordEntry();
+}else{
+  // Plain browser (no Discord): try a stored session, else prompt to open in Discord.
+  document.getElementById('auth-status').classList.add('show');
+  tryRestoreSession().then(()=>{if(!account){
+    document.getElementById('auth-status').innerHTML='Open this inside Discord to sign in.<br><span class="faint" style="font-size:12px">(or add <b>?mock=1</b> to preview with demo data)</span>';}});
+}
+</script>
+</body>
+</html>
