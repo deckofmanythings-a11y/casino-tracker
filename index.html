@@ -56,16 +56,17 @@
   .trip-banner .tb-remain .l{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;}
 
   /* ── Fast select ────────────────────────────────────────── */
-  .fast-select{display:flex;gap:9px;overflow-x:auto;padding:14px 2px 4px;scrollbar-width:none;}
-  .fast-select::-webkit-scrollbar{display:none;}
-  .fast-chip{flex:0 0 auto;min-width:104px;background:var(--panel);border:1px solid var(--border);
+  /* Wrapping grid instead of a horizontal-scroll strip: every favorite is visible
+     and tappable with no scrolling (which was awkward on both desktop and touch). */
+  .fast-select{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:9px;padding:14px 2px 4px;}
+  .fast-chip{min-width:0;overflow:hidden;background:var(--panel);border:1px solid var(--border);
     border-radius:14px;padding:11px 13px;cursor:pointer;transition:transform .06s,border-color .15s;}
   .fast-chip:active{transform:scale(.96);}
-  .fast-chip .fc-name{font-size:14px;font-weight:700;white-space:nowrap;}
-  .fast-chip .fc-sub{font-size:11px;color:var(--muted);margin-top:3px;white-space:nowrap;}
+  .fast-chip .fc-name{font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .fast-chip .fc-sub{font-size:11px;color:var(--muted);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .fast-chip .fc-cat{font-size:15px;}
   .fast-chip.new{display:flex;align-items:center;justify-content:center;border-style:dashed;
-    color:var(--gold);font-weight:700;font-size:14px;min-width:92px;}
+    color:var(--gold);font-weight:700;font-size:14px;min-height:100%;}
 
   /* ── Session card ───────────────────────────────────────── */
   .session-card{margin-top:12px;}
@@ -251,7 +252,7 @@
 //  Mirrors the raided-hex Activity stack: Discord-OAuth identity, Supabase-backed
 //  Edge Functions (ct-auth / ct-whoami / ct-data / ct-write), session-token'd.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.1.2';
+const APP_VERSION='0.1.3';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Config ─────────────────────────────────────────────────────────────────
