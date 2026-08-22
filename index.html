@@ -53,14 +53,12 @@
 
   /* ── Trip banner ────────────────────────────────────────── */
   #trip-banner{margin-top:12px;}
-  .trip-banner{display:flex;align-items:center;justify-content:space-between;gap:10px;
-    background:linear-gradient(90deg,rgba(231,193,92,.10),rgba(231,193,92,.03));
-    border:1px solid var(--gold-dim);border-radius:14px;padding:11px 14px;}
-  .trip-banner .tb-name{font-size:13px;font-weight:700;color:var(--gold);}
-  .trip-banner .tb-sub{font-size:11px;color:var(--muted);}
-  .trip-banner .tb-remain{text-align:right;}
-  .trip-banner .tb-remain .n{font-size:19px;font-weight:800;}
-  .trip-banner .tb-remain .l{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;}
+  .trip-banner{background:linear-gradient(180deg,rgba(231,193,92,.13),rgba(231,193,92,.04));
+    border:1px solid var(--gold-dim);border-radius:14px;padding:12px 14px;text-align:center;}
+  .trip-banner .tb-label{font-size:11px;font-weight:700;color:var(--gold);letter-spacing:.5px;text-transform:uppercase;}
+  .trip-banner .tb-pocket{font-size:31px;font-weight:800;letter-spacing:-.6px;line-height:1.1;margin:3px 0;}
+  .trip-banner .tb-sub{font-size:11.5px;color:var(--muted);}
+  .trip-banner .tb-sub b{color:var(--text);font-weight:600;}
 
   /* ── Fast select ────────────────────────────────────────── */
   /* Wrapping grid instead of a horizontal-scroll strip: every favorite is visible
@@ -273,7 +271,7 @@
 //  Mirrors the raided-hex Activity stack: Discord-OAuth identity, Supabase-backed
 //  Edge Functions (ct-auth / ct-whoami / ct-data / ct-write), session-token'd.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.2.1';
+const APP_VERSION='0.2.2';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Config ─────────────────────────────────────────────────────────────────
@@ -451,9 +449,9 @@ function renderToday(){
   if(state.active_trip&&state.active_trip_totals){
     const t=state.active_trip,tt=state.active_trip_totals;
     tb.innerHTML=`<div class="trip-banner">
-      <div><div class="tb-name">💰 ${esc(t.name)}</div>
-        <div class="tb-sub">${t.casino?esc(t.casino)+' · ':''}Bankroll ${money(t.starting_bankroll)} · Net ${signMoney(tt.net)}</div></div>
-      <div class="tb-remain"><div class="n ${netClass(tt.remaining-num(t.starting_bankroll))}">${money(tt.remaining)}</div><div class="l">in pocket</div></div>
+      <div class="tb-label">💰 In pocket · ${esc(t.name)}</div>
+      <div class="tb-pocket ${netClass(tt.net)}">${money(tt.remaining)}</div>
+      <div class="tb-sub">Brought <b>${money(t.starting_bankroll)}</b>${t.casino?' · '+esc(t.casino):''} · net ${signMoney(tt.net)}</div>
     </div>`;
   }else tb.innerHTML='';
 
@@ -926,7 +924,8 @@ function renderBankroll(){
       <button class="btn primary btn-lg" style="margin-top:16px;" id="bk-start">Start trip</button></div>`;
     document.getElementById('bk-start').addEventListener('click',async()=>{
       afterWrite(await api('ct-write',{action:'save-trip',name:document.getElementById('bk-name').value.trim()||'Trip',
-        casino:document.getElementById('bk-casino').value.trim()||null,starting_bankroll:document.getElementById('bk-roll').value||0}));
+        casino:document.getElementById('bk-casino').value.trim()||null,starting_bankroll:document.getElementById('bk-roll').value||0,
+        start_date:state.today}));
     });
   }
 }
@@ -1012,7 +1011,7 @@ function mockSeed(){
       {id:'g4',name:'Blackjack',category:'table',default_denom:null,default_bet:null,sort_order:3,archived:false},
       {id:'g5',name:'Dbl Double Bonus',category:'video_poker',default_denom:0.25,default_bet:1.25,sort_order:4,archived:false},
     ],
-    trips:[{id:'t1',name:'Vegas — August',casino:'Bellagio',starting_bankroll:1000,started_at:dayAgo(2)+'T18:00:00',ended_at:null}],
+    trips:[{id:'t1',name:'Vegas — August',casino:'Bellagio',starting_bankroll:1000,start_date:dayAgo(2),started_at:dayAgo(2)+'T18:00:00',ended_at:null}],
     sessions:[
       withBonus(withBuyins(S({game_name:'Lightning Link',category:'slot',denom:1,bet_size:2.5,session_date:t,cash_out:null}),[200,100]),[{amount:250,base_bet:2.5},{amount:80,base_bet:2.5}]),
       withBonus(withBuyins(S({game_name:'Buffalo Gold',category:'slot',denom:0.01,bet_size:1.5,session_date:t,cash_out:420}),[100]),[{amount:1500,base_bet:1.5}]),
@@ -1029,7 +1028,8 @@ function mockBootstrap(today){
   const sessions=mockDB.sessions.filter(s=>s.session_date===today)
     .map(s=>({...s,ct_buyins:s.buyins,ct_bonuses:s.bonuses}));
   let active_trip_totals=null;
-  if(active_trip){const ts=mockDB.sessions.filter(s=>s.trip_id===active_trip.id);
+  if(active_trip){const sd=active_trip.start_date||'';
+    const ts=mockDB.sessions.filter(s=>!sd||s.session_date>=sd);
     const buyins=ts.reduce((x,s)=>x+num(s.buy_in_total),0),cashouts=ts.reduce((x,s)=>x+num(s.cash_out),0);
     active_trip_totals={buyins,cashouts,net:cashouts-buyins,remaining:num(active_trip.starting_bankroll)-buyins+cashouts};}
   return {today,games,active_trip,active_trip_totals,sessions};
@@ -1074,7 +1074,7 @@ function mockWrite(b){
   else if(a==='delete-game'){const g=mockDB.games.find(x=>x.id===b.id);if(g)g.archived=true;}
   else if(a==='reorder-games'){(b.ids||[]).forEach((id,i)=>{const g=mockDB.games.find(x=>x.id===id);if(g)g.sort_order=i;});}
   else if(a==='save-trip'){if(b.id){const t=mockDB.trips.find(x=>x.id===b.id);if(t)Object.assign(t,{name:b.name,casino:b.casino,starting_bankroll:num(b.starting_bankroll)});}
-    else mockDB.trips.push({id:mockId('t'),name:b.name,casino:b.casino,starting_bankroll:num(b.starting_bankroll),started_at:new Date().toISOString(),ended_at:null});}
+    else mockDB.trips.push({id:mockId('t'),name:b.name,casino:b.casino,starting_bankroll:num(b.starting_bankroll),start_date:b.start_date||todayLocal(),started_at:new Date().toISOString(),ended_at:null});}
   else if(a==='close-trip'){const t=mockDB.trips.find(x=>x.id===b.id);if(t)t.ended_at=new Date().toISOString();}
 }
 function mockStats(){
