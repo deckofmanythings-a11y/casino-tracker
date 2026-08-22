@@ -271,7 +271,7 @@
 //  Mirrors the raided-hex Activity stack: Discord-OAuth identity, Supabase-backed
 //  Edge Functions (ct-auth / ct-whoami / ct-data / ct-write), session-token'd.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.1.5';
+const APP_VERSION='0.2.0';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Config ─────────────────────────────────────────────────────────────────
@@ -688,6 +688,9 @@ function openCashoutSheet(sessionId){
     <div class="muted" style="font-size:13px;margin-bottom:8px;">${esc(s?.game_name||'')} · bought in ${money(s?.buy_in_total)}</div>
     <label class="field">Cash-out amount</label>
     <div class="money-input"><span class="dollar">$</span><input id="co-amt" inputmode="decimal" placeholder="0"></div>
+    ${isSlotty(s?.category)?`<button class="btn" id="co-scan" style="margin-top:10px;">📷 Scan TITO ticket</button>
+    <input type="file" id="co-file" accept="image/*" capture="environment" style="display:none">
+    <div id="co-scan-status" class="muted" style="font-size:12px;margin-top:6px;min-height:14px;"></div>`:''}
     <div class="mult-preview">Session net<b id="co-net">—</b></div>
     <div class="sheet-actions"><button class="btn" data-close-sheet>Cancel</button>
       <button class="btn primary" id="co-done">End session</button></div>
@@ -696,10 +699,55 @@ function openCashoutSheet(sessionId){
     function recalc(){const n=num(amt.value)-num(s?.buy_in_total);net.textContent=signMoney(n);
       net.className='';net.classList.add(netClass(n));}
     amt.addEventListener('input',recalc);amt.focus();recalc();
+
+    // TITO ticket scan: take/pick a photo, downscale it, read the cash value, prefill.
+    const scanBtn=document.getElementById('co-scan');
+    if(scanBtn){
+      const fileInput=document.getElementById('co-file');
+      const status=document.getElementById('co-scan-status');
+      scanBtn.addEventListener('click',()=>fileInput.click());
+      fileInput.addEventListener('change',async()=>{
+        const f=fileInput.files&&fileInput.files[0];
+        if(!f)return;
+        scanBtn.disabled=true;status.textContent='Reading ticket…';
+        try{
+          const {data,media_type}=await fileToScaledBase64(f);
+          const resp=await api('ct-scan-ticket',{image:data,media_type});
+          if(resp&&resp.ok&&resp.amount!=null){
+            amt.value=resp.amount;recalc();
+            status.innerHTML='Read <b style="color:var(--gold)">'+money(resp.amount)+'</b> — check it, then End session.';
+          }else{
+            status.textContent=(resp&&resp.message)||'Couldn’t read a value — enter it manually.';
+          }
+        }catch(e){status.textContent='Scan failed — enter it manually.';}
+        finally{scanBtn.disabled=false;fileInput.value='';}
+      });
+    }
+
     document.getElementById('co-done').addEventListener('click',async()=>{
       const v=document.getElementById('co-amt').value||'0';
       afterWrite(await api('ct-write',{action:'save-session',id:sessionId,cash_out:v}));
     });
+  });
+}
+
+// Downscale a chosen photo to a modest JPEG before upload — keeps the request small
+// (a raw phone photo is several MB) and cheaper/faster to OCR. Returns base64 (no prefix).
+function fileToScaledBase64(file,maxDim=1400,quality=0.72){
+  return new Promise((resolve,reject)=>{
+    const img=new Image();
+    img.onload=()=>{
+      let w=img.naturalWidth,h=img.naturalHeight;
+      const scale=Math.min(1,maxDim/Math.max(w,h));
+      w=Math.max(1,Math.round(w*scale));h=Math.max(1,Math.round(h*scale));
+      const c=document.createElement('canvas');c.width=w;c.height=h;
+      c.getContext('2d').drawImage(img,0,0,w,h);
+      URL.revokeObjectURL(img.src);
+      const dataUrl=c.toDataURL('image/jpeg',quality);
+      resolve({data:dataUrl.split(',')[1],media_type:'image/jpeg'});
+    };
+    img.onerror=()=>{URL.revokeObjectURL(img.src);reject(new Error('Could not read image'));};
+    img.src=URL.createObjectURL(file);
   });
 }
 
@@ -944,6 +992,7 @@ async function mockApi(name,payload){
     return {ok:true,bootstrap:mockBootstrap(today)};
   }
   if(name==='ct-write'){mockWrite(payload);return {ok:true,bootstrap:mockBootstrap(today)};}
+  if(name==='ct-scan-ticket'){await new Promise(r=>setTimeout(r,600));return {ok:true,amount:123.45,raw:'123.45'};}
   return {ok:false,message:'mock: unknown '+name};
 }
 function mockWrite(b){
