@@ -209,7 +209,9 @@
 <body>
 
 <div id="mock-flag">DEMO MODE — mock data, nothing is saved</div>
-<div id="auth-status">Connecting to Discord…<div id="auth-debug"></div></div>
+<div id="auth-status"><div id="auth-msg">Connecting to Discord…</div>
+  <button id="auth-reconnect" class="btn primary" style="display:none;max-width:220px;margin:16px auto 0;">Reconnect</button>
+  <div id="auth-debug"></div></div>
 <div id="version-tag"></div>
 
 <div id="app">
@@ -271,7 +273,7 @@
 //  Mirrors the raided-hex Activity stack: Discord-OAuth identity, Supabase-backed
 //  Edge Functions (ct-auth / ct-whoami / ct-data / ct-write), session-token'd.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.2.0';
+const APP_VERSION='0.2.1';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Config ─────────────────────────────────────────────────────────────────
@@ -328,41 +330,92 @@ async function api(name,payload){
 // Apply a bootstrap payload returned by any read/write to local state.
 function applyBootstrap(b){if(!b)return;state={...state,...b};}
 
-// ── Discord entry ──────────────────────────────────────────────────────────
+// ── Discord entry / resume ─────────────────────────────────────────────────
+// callFn with a hard timeout so a stalled just-woke network never hangs the boot
+// screen forever (the old flow had no timeout on authorize() or ct-auth).
+function callFnT(name,payload,ms=12000){
+  return withTimeout(callFn(name,payload),ms,name).catch(e=>({ok:false,message:(e&&e.message)||String(e)}));
+}
+function setAuthMsg(msg){document.getElementById('auth-status').classList.add('show');document.getElementById('auth-msg').textContent=msg;}
+function showReconnect(msg){
+  setAuthMsg(msg||'Couldn’t reach Discord. Tap to retry.');
+  document.getElementById('app').classList.remove('show');
+  document.getElementById('auth-reconnect').style.display='block';
+}
+
+// Entry orchestration: try the SAVED session first (fast, survives phone-sleep
+// reloads), and only fall back to the full Discord OAuth handshake if that fails.
+// This is what makes wake-up reliable — resuming no longer re-runs authorize().
+async function enterDiscord(){
+  document.getElementById('auth-reconnect').style.display='none';
+  document.getElementById('auth-debug').textContent='';
+  setAuthMsg('Connecting…');
+  state.today=todayLocal();
+  if(await tryRestoreSession())return;
+  await runDiscordEntry();
+  if(!account)showReconnect();
+}
+document.getElementById('auth-reconnect').addEventListener('click',enterDiscord);
+
+async function tryRestoreSession(){
+  const token=localStorage.getItem(SESSION_KEY);if(!token)return false;
+  sessionToken=token;
+  const data=await callFnT('ct-whoami',{session_token:token,today:state.today});
+  if(!data.ok||!data.account){
+    if(data.message==='Invalid session.'||data.message==='Session expired.'){localStorage.removeItem(SESSION_KEY);sessionToken=null;}
+    return false; // network error → keep token, OAuth fallback / reconnect will retry
+  }
+  boot(data.account,data.bootstrap);return true;
+}
+
 async function runDiscordEntry(){
-  const statusEl=document.getElementById('auth-status');statusEl.classList.add('show');
   try{
     const {DiscordSDK}=window.DiscordSDKLib;
     const sdk=new DiscordSDK(DISCORD_CLIENT_ID);
     await withTimeout(sdk.ready(),20000,'Discord SDK ready()');
     let code;
-    try{({code}=await sdk.commands.authorize({client_id:DISCORD_CLIENT_ID,response_type:'code',state:'',prompt:'none',scope:['identify']}));}
-    catch(e){({code}=await sdk.commands.authorize({client_id:DISCORD_CLIENT_ID,response_type:'code',state:'',prompt:'consent',scope:['identify']}));}
-    const data=await callFn('ct-auth',{code,today:state.today});
+    try{({code}=await withTimeout(sdk.commands.authorize({client_id:DISCORD_CLIENT_ID,response_type:'code',state:'',prompt:'none',scope:['identify']}),20000,'authorize'));}
+    catch(e){({code}=await withTimeout(sdk.commands.authorize({client_id:DISCORD_CLIENT_ID,response_type:'code',state:'',prompt:'consent',scope:['identify']}),20000,'authorize'));}
+    const data=await callFnT('ct-auth',{code,today:state.today});
     if(!data.ok||!data.account)throw new Error(data.message||'Sign-in failed.');
     localStorage.setItem(SESSION_KEY,data.account.session_token);
     boot(data.account,data.bootstrap);
   }catch(e){
     console.error('Discord entry failed:',e);
-    await tryRestoreSession();
-    if(!account){document.getElementById('auth-debug').textContent='Debug: '+((e&&e.message)||e);}
-  }finally{if(account)statusEl.classList.remove('show');}
-}
-async function tryRestoreSession(){
-  const token=localStorage.getItem(SESSION_KEY);if(!token)return;
-  sessionToken=token;
-  const data=await callFn('ct-whoami',{session_token:token,today:state.today}).catch(e=>({ok:false,message:String(e)}));
-  if(!data.ok||!data.account){localStorage.removeItem(SESSION_KEY);sessionToken=null;return;}
-  boot(data.account,data.bootstrap);
+    document.getElementById('auth-debug').textContent='Debug: '+((e&&e.message)||e);
+  }
 }
 
 function boot(acct,bootstrap){
   account=acct;sessionToken=acct.session_token||sessionToken;
   applyBootstrap(bootstrap);
+  document.getElementById('auth-reconnect').style.display='none';
   document.getElementById('auth-status').classList.remove('show');
   document.getElementById('app').classList.add('show');
-  setTab('today');
+  setTab(currentTab||'today');
 }
+
+// Resume handler: when the Activity becomes visible again after the phone slept, the
+// iframe may have survived (stale data) or reloaded (cold boot handled by enterDiscord).
+// If we still have a session, silently refresh; if it was lost, reconnect.
+let resuming=false;
+async function onResume(){
+  if(MOCK||resuming||document.visibilityState!=='visible')return;
+  resuming=true;
+  try{
+    state.today=todayLocal(); // date may have rolled to a new gambling day
+    if(account&&sessionToken){
+      const r=await callFnT('ct-data',{session_token:sessionToken,view:'today',today:state.today});
+      if(r&&r.ok&&r.bootstrap){applyBootstrap(r.bootstrap);
+        if(currentTab==='today')renderToday();else if(currentTab==='bankroll')renderBankroll();}
+      else if(r&&(r.message==='Invalid session.'||r.message==='Session expired.')){account=null;enterDiscord();}
+    }else if(isDiscordActivity()){
+      enterDiscord();
+    }
+  }finally{resuming=false;}
+}
+document.addEventListener('visibilitychange',onResume);
+window.addEventListener('pageshow',e=>{if(e.persisted)onResume();});
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  Rendering
@@ -1048,7 +1101,7 @@ if(MOCK){
   mockSeed();
   boot(mockDB.account,mockBootstrap(todayLocal()));
 }else if(isDiscordActivity()){
-  runDiscordEntry();
+  enterDiscord();
 }else{
   // Plain browser (no Discord): try a stored session, else prompt to open in Discord.
   document.getElementById('auth-status').classList.add('show');
