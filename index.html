@@ -171,9 +171,9 @@
   .money-input{position:relative;}
   .money-input input{padding-left:26px;font-size:22px;font-weight:700;}
   .money-input .dollar{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:18px;font-weight:700;}
-  .seg{display:flex;gap:6px;}
-  .seg button{flex:1;padding:9px;border-radius:10px;background:var(--panel2);border:1px solid var(--border);
-    color:var(--muted);font-size:12px;font-weight:700;}
+  .seg{display:flex;flex-wrap:wrap;gap:6px;}
+  .seg button{flex:1 1 auto;min-width:88px;padding:9px 6px;border-radius:10px;background:var(--panel2);border:1px solid var(--border);
+    color:var(--muted);font-size:12px;font-weight:700;white-space:nowrap;}
   .seg button.sel{background:var(--gold);color:#241c00;border-color:var(--gold-dim);}
   .toggle-row{display:flex;align-items:center;justify-content:space-between;margin-top:14px;
     background:var(--panel2);border:1px solid var(--border);border-radius:12px;padding:11px 13px;}
@@ -271,7 +271,7 @@
 //  Mirrors the raided-hex Activity stack: Discord-OAuth identity, Supabase-backed
 //  Edge Functions (ct-auth / ct-whoami / ct-data / ct-write), session-token'd.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.2.3';
+const APP_VERSION='0.3.0';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Config ─────────────────────────────────────────────────────────────────
@@ -317,13 +317,40 @@ function signMoney(n){n=num(n);return (n>0?'+':n<0?'-':'')+'$'+Math.abs(n).toLoc
 function netClass(n){return num(n)>0?'win':num(n)<0?'loss':'';}
 function fmtMult(m){return m==null?'—':(num(m).toFixed(num(m)>=100?0:1)+'×');}
 function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
-function catIcon(c){return {slot:'🎰',video_poker:'🃏',table:'♠️',other:'🎲'}[c]||'🎲';}
-function catLabel(c){return {slot:'Slot',video_poker:'Video Poker',table:'Table',other:'Other'}[c]||'Other';}
-function isSlotty(c){return c==='slot'||c==='video_poker';}
+function catIcon(c){return {slot:'🎰',video_poker:'🃏',bubble_craps:'🎲',table:'♠️',other:'✨'}[c]||'✨';}
+function catLabel(c){return {slot:'Slot',video_poker:'Video Poker',bubble_craps:'Bubble Craps',table:'Table',other:'Other'}[c]||'Other';}
+function isSlotty(c){return c==='slot'||c==='video_poker';} // has denom/base-bet + bonus tracker
+function usesCents(c){return c==='slot'||c==='video_poker'||c==='bubble_craps';} // cents-first money entry + TITO ticket
 function sessNet(s){return num(s.cash_out)-num(s.buy_in_total);}
 function isOpen(s){return s.cash_out===null||s.cash_out===undefined;}
 function prettyDate(iso){const [y,m,d]=iso.split('-').map(Number);const dt=new Date(y,m-1,d);
   return dt.toLocaleDateString(undefined,{weekday:'long',month:'short',day:'numeric'});}
+
+// ── Cents-first money entry (POS/ATM style) ────────────────────────────────
+// In cents mode the digits typed are read as cents: "1"→$0.01, "100"→$1.00,
+// "12345"→$123.45. Used for slots / video poker / bubble craps money fields.
+function centsReformat(inp){
+  const digits=(inp.value.match(/\d/g)||[]).join('').replace(/^0+(?=\d)/,'').slice(0,12);
+  inp.value=digits?(parseInt(digits,10)/100).toFixed(2):'';
+}
+function enableCents(inp){
+  if(!inp||inp.dataset.cents)return;
+  inp.dataset.cents='1';
+  inp.setAttribute('inputmode','numeric');
+  // A pre-filled dollar value (e.g. "2.5" on an edit) must be seeded to 2dp first,
+  // or the digit-extractor would misread "2.5" as 25¢. Idempotent for already-2dp values.
+  const seed=parseFloat(inp.value);
+  if(inp.value.trim()!==''&&isFinite(seed))inp.value=seed.toFixed(2);
+  inp._centsFmt=()=>centsReformat(inp);
+  inp.addEventListener('input',inp._centsFmt);
+}
+function disableCents(inp){
+  if(!inp||!inp.dataset.cents)return;
+  delete inp.dataset.cents;
+  inp.setAttribute('inputmode','decimal');
+  if(inp._centsFmt){inp.removeEventListener('input',inp._centsFmt);inp._centsFmt=null;}
+}
+function applyCents(inp,on){on?enableCents(inp):disableCents(inp);}
 
 // ── API layer (real Edge Functions, or the mock engine below) ───────────────
 async function callFn(name,payload){
@@ -630,7 +657,7 @@ function afterWrite(resp){
 }
 
 // Category segmented control markup + wiring.
-function segMarkup(sel){return ['slot','video_poker','table','other'].map(c=>
+function segMarkup(sel){return ['slot','video_poker','bubble_craps','table','other'].map(c=>
   `<button type="button" class="${c===sel?'sel':''}" data-cat="${c}">${catIcon(c)} ${catLabel(c)}</button>`).join('');}
 
 // ── New / edit session ──────────────────────────────────────────────────────
@@ -659,10 +686,13 @@ function openSessionSheet(game){
   `,()=>{
     let selCat=cat;
     const clientKey=genKey(); // one idempotency key per opened sheet — a double-tap/retry can't duplicate
+    enableCents(document.getElementById('f-denom'));enableCents(document.getElementById('f-bet'));
+    applyCents(document.getElementById('f-buyin'),usesCents(selCat));
     document.querySelectorAll('#f-cat button').forEach(b=>b.addEventListener('click',()=>{
       selCat=b.dataset.cat;
       document.querySelectorAll('#f-cat button').forEach(x=>x.classList.toggle('sel',x===b));
       document.getElementById('f-slotfields').style.display=isSlotty(selCat)?'':'none';
+      applyCents(document.getElementById('f-buyin'),usesCents(selCat));
     }));
     const startBtn=document.getElementById('f-start');
     startBtn.addEventListener('click',async()=>{
@@ -699,8 +729,11 @@ function openEditSession(id){
     </div>
   `,()=>{
     let selCat=s.category;
+    enableCents(document.getElementById('e-denom'));enableCents(document.getElementById('e-bet'));
+    applyCents(document.getElementById('e-cashout'),usesCents(selCat));
     document.querySelectorAll('#e-cat button').forEach(b=>b.addEventListener('click',()=>{
-      selCat=b.dataset.cat;document.querySelectorAll('#e-cat button').forEach(x=>x.classList.toggle('sel',x===b));}));
+      selCat=b.dataset.cat;document.querySelectorAll('#e-cat button').forEach(x=>x.classList.toggle('sel',x===b));
+      applyCents(document.getElementById('e-cashout'),usesCents(selCat));}));
     document.getElementById('e-save').addEventListener('click',async()=>{
       const p={action:'save-session',id:s.id,game_name:document.getElementById('e-name').value.trim(),
         category:selCat,denom:document.getElementById('e-denom').value,bet_size:document.getElementById('e-bet').value,
@@ -725,6 +758,7 @@ function openBuyinSheet(sessionId){
     <div class="sheet-actions"><button class="btn" data-close-sheet>Cancel</button>
       <button class="btn primary" id="bi-add">Add buy-in</button></div>
   `,()=>{
+    applyCents(document.getElementById('bi-amt'),usesCents(s?.category));
     document.getElementById('bi-amt').focus();
     const btn=document.getElementById('bi-add');
     btn.addEventListener('click',async()=>{
@@ -752,6 +786,7 @@ function openBonusSheet(sessionId){
   `,()=>{
     const amt=document.getElementById('bo-amt'),bet=document.getElementById('bo-bet'),
       mult=document.getElementById('bo-mult'),jp=document.getElementById('bo-jp');
+    enableCents(amt);enableCents(bet); // bonus only shows for slot/vp → always cents
     let jpManual=false;
     function recalc(){
       const a=num(amt.value),b=num(bet.value);
@@ -778,7 +813,7 @@ function openCashoutSheet(sessionId){
     <div class="muted" style="font-size:13px;margin-bottom:8px;">${esc(s?.game_name||'')} · bought in ${money(s?.buy_in_total)}</div>
     <label class="field">Cash-out amount</label>
     <div class="money-input"><span class="dollar">$</span><input id="co-amt" inputmode="decimal" placeholder="0"></div>
-    ${isSlotty(s?.category)?`<button class="btn" id="co-scan" style="margin-top:10px;">📷 Scan TITO ticket</button>
+    ${usesCents(s?.category)?`<button class="btn" id="co-scan" style="margin-top:10px;">📷 Scan TITO ticket</button>
     <input type="file" id="co-file" accept="image/*" capture="environment" style="display:none">
     <div id="co-scan-status" class="muted" style="font-size:12px;margin-top:6px;min-height:14px;"></div>`:''}
     <div class="mult-preview">Session net<b id="co-net">—</b></div>
@@ -786,6 +821,7 @@ function openCashoutSheet(sessionId){
       <button class="btn primary" id="co-done">End session</button></div>
   `,()=>{
     const amt=document.getElementById('co-amt'),net=document.getElementById('co-net');
+    applyCents(amt,usesCents(s?.category));
     function recalc(){const n=num(amt.value)-num(s?.buy_in_total);net.textContent=signMoney(n);
       net.className='';net.classList.add(netClass(n));}
     amt.addEventListener('input',recalc);amt.focus();recalc();
@@ -1020,6 +1056,7 @@ function openGameSheet(game){
       <button class="btn primary" id="g-save">Save</button></div>
   `,()=>{
     let selCat=cat;
+    enableCents(document.getElementById('g-denom'));enableCents(document.getElementById('g-bet'));
     document.querySelectorAll('#g-cat button').forEach(b=>b.addEventListener('click',()=>{
       selCat=b.dataset.cat;document.querySelectorAll('#g-cat button').forEach(x=>x.classList.toggle('sel',x===b));
       document.getElementById('g-slot').style.display=isSlotty(selCat)?'':'none';}));
