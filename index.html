@@ -271,7 +271,7 @@
 //  Mirrors the raided-hex Activity stack: Discord-OAuth identity, Supabase-backed
 //  Edge Functions (ct-auth / ct-whoami / ct-data / ct-write), session-token'd.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.2.2';
+const APP_VERSION='0.2.3';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Config ─────────────────────────────────────────────────────────────────
@@ -286,6 +286,17 @@ const SUPABASE_ANON_KEY='sb_publishable_91Zn_uJ9anW46vAClx6-bQ__wLL4fXl';
 // Tracker's own Discord application (separate from raided-hex's).
 const DISCORD_CLIENT_ID='1540385140658933800';
 const SESSION_KEY='casino_tracker_session';
+const CACHE_KEY='casino_tracker_cache';
+
+function genKey(){try{if(crypto.randomUUID)return crypto.randomUUID();}catch(_){}return 'k'+Date.now()+Math.random().toString(36).slice(2);}
+// Persist last-known state so a cold boot (phone-sleep reload) can render instantly
+// from cache instead of blocking on a network round-trip (the "crash" on resume).
+function cacheState(){
+  try{localStorage.setItem(CACHE_KEY,JSON.stringify({account,bootstrap:{
+    today:state.today,games:state.games,active_trip:state.active_trip,
+    active_trip_totals:state.active_trip_totals,sessions:state.sessions},ts:Date.now()}));}catch(_){}
+}
+function readCache(){try{const s=localStorage.getItem(CACHE_KEY);return s?JSON.parse(s):null;}catch(_){return null;}}
 
 // ── App state ──────────────────────────────────────────────────────────────
 let sessionToken=null;
@@ -347,10 +358,27 @@ function showReconnect(msg){
 async function enterDiscord(){
   document.getElementById('auth-reconnect').style.display='none';
   document.getElementById('auth-debug').textContent='';
-  setAuthMsg('Connecting…');
   state.today=todayLocal();
-  if(await tryRestoreSession())return;
-  await runDiscordEntry();
+
+  // 1) Instant paint from cache so a resume/reload never shows a blank or stuck
+  //    "Connecting…" screen. We reconcile with the server in the background below.
+  const cached=readCache();
+  if(cached&&cached.account){
+    account=cached.account;
+    sessionToken=account.session_token||localStorage.getItem(SESSION_KEY);
+    applyBootstrap(cached.bootstrap);
+    document.getElementById('auth-status').classList.remove('show');
+    document.getElementById('app').classList.add('show');
+    setTab(currentTab||'today');
+  }else{
+    setAuthMsg('Connecting…');
+  }
+
+  // 2) Reconcile: validate/refresh the saved session in the background.
+  if(await tryRestoreSession())return;               // booted/refreshed from server
+  // ct-whoami didn't restore. If the token was cleared it was invalid/absent → OAuth.
+  // If sessionToken is still set, it was just a network hiccup → keep the cached view.
+  if(!sessionToken)await runDiscordEntry();
   if(!account)showReconnect();
 }
 document.getElementById('auth-reconnect').addEventListener('click',enterDiscord);
@@ -387,6 +415,7 @@ async function runDiscordEntry(){
 function boot(acct,bootstrap){
   account=acct;sessionToken=acct.session_token||sessionToken;
   applyBootstrap(bootstrap);
+  cacheState();
   document.getElementById('auth-reconnect').style.display='none';
   document.getElementById('auth-status').classList.remove('show');
   document.getElementById('app').classList.add('show');
@@ -404,7 +433,7 @@ async function onResume(){
     state.today=todayLocal(); // date may have rolled to a new gambling day
     if(account&&sessionToken){
       const r=await callFnT('ct-data',{session_token:sessionToken,view:'today',today:state.today});
-      if(r&&r.ok&&r.bootstrap){applyBootstrap(r.bootstrap);
+      if(r&&r.ok&&r.bootstrap){applyBootstrap(r.bootstrap);cacheState();
         if(currentTab==='today')renderToday();else if(currentTab==='bankroll')renderBankroll();}
       else if(r&&(r.message==='Invalid session.'||r.message==='Session expired.')){account=null;enterDiscord();}
     }else if(isDiscordActivity()){
@@ -590,6 +619,7 @@ function confirmDialog(msg,{confirmLabel='Confirm',danger=false}={}){
 function afterWrite(resp){
   if(!resp||!resp.ok){if(resp&&resp.message)toast(resp.message);return false;}
   applyBootstrap(resp.bootstrap);
+  cacheState();
   closeSheet();
   if(currentTab==='today')renderToday();
   else if(currentTab==='bankroll')renderBankroll();
@@ -628,20 +658,25 @@ function openSessionSheet(game){
     </div>
   `,()=>{
     let selCat=cat;
+    const clientKey=genKey(); // one idempotency key per opened sheet — a double-tap/retry can't duplicate
     document.querySelectorAll('#f-cat button').forEach(b=>b.addEventListener('click',()=>{
       selCat=b.dataset.cat;
       document.querySelectorAll('#f-cat button').forEach(x=>x.classList.toggle('sel',x===b));
       document.getElementById('f-slotfields').style.display=isSlotty(selCat)?'':'none';
     }));
-    document.getElementById('f-start').addEventListener('click',async()=>{
-      const payload={action:'save-session',
+    const startBtn=document.getElementById('f-start');
+    startBtn.addEventListener('click',async()=>{
+      if(startBtn.disabled)return;
+      startBtn.disabled=true;startBtn.textContent='Starting…';
+      const payload={action:'save-session',client_key:clientKey,
         game_id:g.id||null,game_name:document.getElementById('f-name').value.trim()||g.name||'Untitled',
         category:selCat,casino:document.getElementById('f-casino').value.trim()||null,
         denom:isSlotty(selCat)?document.getElementById('f-denom').value:null,
         bet_size:isSlotty(selCat)?document.getElementById('f-bet').value:null,
         buy_in:document.getElementById('f-buyin').value||null,
         trip_id:state.active_trip?.id||null,session_date:state.today};
-      afterWrite(await api('ct-write',payload));
+      const ok=afterWrite(await api('ct-write',payload));
+      if(!ok){startBtn.disabled=false;startBtn.textContent='Start session';}
     });
   });
 }
@@ -691,9 +726,11 @@ function openBuyinSheet(sessionId){
       <button class="btn primary" id="bi-add">Add buy-in</button></div>
   `,()=>{
     document.getElementById('bi-amt').focus();
-    document.getElementById('bi-add').addEventListener('click',async()=>{
-      const v=document.getElementById('bi-amt').value;if(!v)return;
-      afterWrite(await api('ct-write',{action:'add-buyin',session_id:sessionId,amount:v}));
+    const btn=document.getElementById('bi-add');
+    btn.addEventListener('click',async()=>{
+      const v=document.getElementById('bi-amt').value;if(!v||btn.disabled)return;
+      btn.disabled=true;btn.textContent='Adding…';
+      if(!afterWrite(await api('ct-write',{action:'add-buyin',session_id:sessionId,amount:v}))){btn.disabled=false;btn.textContent='Add buy-in';}
     });
   });
 }
@@ -724,10 +761,12 @@ function openBonusSheet(sessionId){
     amt.addEventListener('input',recalc);bet.addEventListener('input',recalc);
     jp.addEventListener('click',()=>{jpManual=true;jp.classList.toggle('on');});
     amt.focus();recalc();
-    document.getElementById('bo-add').addEventListener('click',async()=>{
-      if(!amt.value)return;
-      afterWrite(await api('ct-write',{action:'add-bonus',session_id:sessionId,
-        amount:amt.value,base_bet:bet.value||null,is_jackpot:jp.classList.contains('on'),machine_name:s?.game_name}));
+    const boBtn=document.getElementById('bo-add');
+    boBtn.addEventListener('click',async()=>{
+      if(!amt.value||boBtn.disabled)return;
+      boBtn.disabled=true;boBtn.textContent='Saving…';
+      if(!afterWrite(await api('ct-write',{action:'add-bonus',session_id:sessionId,
+        amount:amt.value,base_bet:bet.value||null,is_jackpot:jp.classList.contains('on'),machine_name:s?.game_name}))){boBtn.disabled=false;boBtn.textContent='Log bonus';}
     });
   });
 }
@@ -775,9 +814,12 @@ function openCashoutSheet(sessionId){
       });
     }
 
-    document.getElementById('co-done').addEventListener('click',async()=>{
+    const coBtn=document.getElementById('co-done');
+    coBtn.addEventListener('click',async()=>{
+      if(coBtn.disabled)return;
+      coBtn.disabled=true;coBtn.textContent='Ending…';
       const v=document.getElementById('co-amt').value||'0';
-      afterWrite(await api('ct-write',{action:'save-session',id:sessionId,cash_out:v}));
+      if(!afterWrite(await api('ct-write',{action:'save-session',id:sessionId,cash_out:v}))){coBtn.disabled=false;coBtn.textContent='End session';}
     });
   });
 }
@@ -1057,7 +1099,9 @@ function mockWrite(b){
       if('bet_size' in b)s.bet_size=b.bet_size===''?null:num(b.bet_size);
       if('notes' in b)s.notes=b.notes;
       if('cash_out' in b)s.cash_out=b.cash_out===''||b.cash_out==null?null:num(b.cash_out);
-    }else{const s={id:mockId('s'),account_id:'me',trip_id:b.trip_id||null,game_id:b.game_id||null,game_name:b.game_name||'Untitled',
+    }else{
+      if(b.client_key&&mockDB.sessions.some(s=>s.client_key===b.client_key))return; // idempotent
+      const s={id:mockId('s'),account_id:'me',client_key:b.client_key||null,trip_id:b.trip_id||null,game_id:b.game_id||null,game_name:b.game_name||'Untitled',
       category:b.category||'slot',casino:b.casino||null,denom:b.denom?num(b.denom):null,bet_size:b.bet_size?num(b.bet_size):null,
       notes:null,buy_in_total:0,cash_out:'cash_out' in b?(b.cash_out?num(b.cash_out):null):null,session_date:b.session_date||todayLocal(),
       started_at:new Date().toISOString(),buyins:[],bonuses:[]};
