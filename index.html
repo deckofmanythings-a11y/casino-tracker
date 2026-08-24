@@ -202,11 +202,17 @@
     font-family:monospace;z-index:40;pointer-events:none;}
   #mock-flag{position:fixed;top:0;left:0;right:0;background:var(--gold);color:#241c00;font-size:11px;
     font-weight:700;text-align:center;padding:3px;z-index:200;display:none;}
+  #reload-pill{position:fixed;top:calc(env(safe-area-inset-top,0px) + 6px);left:8px;right:8px;z-index:400;
+    display:none;background:#5a1f26;border:1px solid var(--loss);color:#ffdfe3;font-size:12px;line-height:1.35;
+    padding:10px 12px;border-radius:12px;text-align:center;box-shadow:var(--shadow);}
+  #reload-pill.show{display:block;}
+  #reload-pill b{display:block;font-size:13px;margin-bottom:1px;}
 </style>
 </head>
 <body>
 
 <div id="mock-flag">DEMO MODE — mock data, nothing is saved</div>
+<div id="reload-pill"></div>
 <div id="auth-status"><div id="auth-msg">Connecting to Discord…</div>
   <button id="auth-reconnect" class="btn primary" style="display:none;max-width:220px;margin:16px auto 0;">Reconnect</button>
   <div id="auth-debug"></div></div>
@@ -271,8 +277,26 @@
 //  Mirrors the raided-hex Activity stack: Discord-OAuth identity, Supabase-backed
 //  Edge Functions (ct-auth / ct-whoami / ct-data / ct-write), session-token'd.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.3.1';
+const APP_VERSION='0.3.2';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
+
+// ── Crash reporter ─────────────────────────────────────────────────────────
+// Mobile Discord kills/reloads backgrounded Activities aggressively; if anything
+// throws on resume the app can look "crashed". This surfaces an uncaught error as a
+// tap-to-reload bar (one tap recovers, and the text tells us exactly what died —
+// invaluable since mobile has no usable devtools).
+function reportErr(where,err){
+  try{
+    const msg=(err&&(err.message||(err.reason&&(err.reason.message||err.reason))||err.reason))||String(err||'');
+    const pill=document.getElementById('reload-pill');
+    if(!pill)return;
+    pill.innerHTML='<b>⚠ Tap to reload</b>'+esc((where?where+': ':'')+String(msg)).slice(0,180)+' · v'+APP_VERSION;
+    pill.classList.add('show');
+  }catch(_){}
+}
+document.getElementById('reload-pill').addEventListener('click',()=>{try{location.reload();}catch(_){}});
+window.addEventListener('error',e=>reportErr('error',(e&&(e.error||e))||''));
+window.addEventListener('unhandledrejection',e=>reportErr('promise',e));
 
 // ── Config ─────────────────────────────────────────────────────────────────
 function isDiscordActivity(){return location.hostname.endsWith('.discordsays.com')||new URLSearchParams(location.search).has('frame_id');}
@@ -390,16 +414,22 @@ async function enterDiscord(){
   // 1) Instant paint from cache so a resume/reload never shows a blank or stuck
   //    "Connecting…" screen. We reconcile with the server in the background below.
   const cached=readCache();
+  let painted=false;
   if(cached&&cached.account){
-    account=cached.account;
-    sessionToken=account.session_token||localStorage.getItem(SESSION_KEY);
-    applyBootstrap(cached.bootstrap);
-    document.getElementById('auth-status').classList.remove('show');
-    document.getElementById('app').classList.add('show');
-    setTab(currentTab||'today');
-  }else{
-    setAuthMsg('Connecting…');
+    try{
+      account=cached.account;
+      sessionToken=account.session_token||localStorage.getItem(SESSION_KEY);
+      applyBootstrap(cached.bootstrap);
+      document.getElementById('auth-status').classList.remove('show');
+      document.getElementById('app').classList.add('show');
+      setTab(currentTab||'today');
+      painted=true;
+    }catch(e){ // a stale/old-shape cache must never crash boot — fall through to connect
+      console.error('cache render failed',e);
+      account=null;sessionToken=null;try{localStorage.removeItem(CACHE_KEY);}catch(_){}
+    }
   }
+  if(!painted)setAuthMsg('Connecting…');
 
   // 2) Reconcile: validate/refresh the saved session in the background.
   if(await tryRestoreSession())return;               // booted/refreshed from server
