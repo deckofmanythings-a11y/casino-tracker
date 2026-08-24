@@ -271,7 +271,7 @@
 //  Mirrors the raided-hex Activity stack: Discord-OAuth identity, Supabase-backed
 //  Edge Functions (ct-auth / ct-whoami / ct-data / ct-write), session-token'd.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.3.0';
+const APP_VERSION='0.3.1';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Config ─────────────────────────────────────────────────────────────────
@@ -1107,8 +1107,8 @@ function mockBootstrap(today){
   const sessions=mockDB.sessions.filter(s=>s.session_date===today)
     .map(s=>({...s,ct_buyins:s.buyins,ct_bonuses:s.bonuses}));
   let active_trip_totals=null;
-  if(active_trip){const sd=active_trip.start_date||'';
-    const ts=mockDB.sessions.filter(s=>!sd||s.session_date>=sd);
+  if(active_trip){const st=active_trip.started_at||'';
+    const ts=mockDB.sessions.filter(s=>!st||(s.started_at||'')>=st);
     const buyins=ts.reduce((x,s)=>x+num(s.buy_in_total),0),cashouts=ts.reduce((x,s)=>x+num(s.cash_out),0);
     active_trip_totals={buyins,cashouts,net:cashouts-buyins,remaining:num(active_trip.starting_bankroll)-buyins+cashouts};}
   return {today,games,active_trip,active_trip_totals,sessions};
