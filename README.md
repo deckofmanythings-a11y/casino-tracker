@@ -1,39 +1,39 @@
-# Casino Session Tracker — Discord Activity (frontend)
+# Casino Session Tracker — web app
 
-A private, single-user Discord **Activity** for logging real-money casino sessions live
-from your phone: fast-select the game, enter the buy-in, track slot denomination + base
-bet, log **bonus hits as a multiple of the base bet**, cash out, and watch a running
-daily net — plus history, lifetime stats, W-2G jackpot flagging (≥ $1,200), and trip
-bankroll tracking.
+A private, mobile-friendly **web app** for logging real-money casino sessions: fast-select
+the game, enter buy-ins (cents-first for machines), track slot denomination + base bet, log
+**bonus hits as a multiple of the base bet**, scan TITO tickets to auto-fill cash-outs, watch
+a live daily net and trip "in pocket", and review History, lifetime Stats, and a biggest-bonus
+leaderboard.
 
-Static single-page app (no build step), hosted on GitHub Pages, embedded in Discord via
-the Embedded App SDK. Backend: `../casino-tracker-functions` (Supabase Edge Functions in
-the shared raided-hex project). Mirrors the raided-hex Activity stack.
+Static single-page `index.html` (no build step) on GitHub Pages, backed by Supabase.
+**Sign in with email + password (Supabase Auth).** Add it to your phone's home screen (PWA)
+for an app-like experience. Companion backend repo: `../casino-tracker-functions`.
+
+> Previously a Discord Activity — retired in favor of a standalone site (email/password,
+> reliable session persistence, open multi-user sign-ups). The `git` history has that version.
 
 ## Files
 
-- `index.html` — the whole app (UI + logic + a `?mock=1` offline demo engine).
-- `sb-client.bundle.js` — vendored Supabase JS client. **Deliberately NOT named
-  `supabase*`**: Discord Activity URL Mappings match path prefixes as plain strings, and a
-  `/supabase` mapping would swallow a `/supabase-js*.js` request. (Casino-project gotcha.)
-- `discord-embedded-app-sdk.js` — vendored Discord Embedded App SDK.
+- `index.html` — the whole app (auth screens + UI + logic + a `?mock=1` offline demo engine).
+- `sb-client.bundle.js` — vendored Supabase JS client (auth + edge-function calls).
+- `manifest.webmanifest` — PWA manifest for "Add to Home Screen".
 
-## Preview without Discord
+## How it works
 
-Open `index.html?mock=1` in any browser (or the served URL) — it runs the full UI against
-in-memory demo data with no backend. Nothing is saved.
+- **Auth:** Supabase Auth email/password. The client holds the session (persisted +
+  auto-refreshed by supabase-js) and sends the user's JWT to the edge functions, which scope
+  all data to that account (`requireUser`). Nothing in the `ct_` tables is publicly readable.
+- **Preview without a login:** open `index.html?mock=1` — full UI against in-memory demo data,
+  nothing saved.
 
-## Configure before it works in Discord
+## Supabase Auth setup (dashboard)
 
-In `index.html`, set `DISCORD_CLIENT_ID` to the tracker's Discord application client ID.
-`SUPABASE_URL` / `SUPABASE_ANON_KEY` already point at the shared raided-hex project.
-
-## Discord Developer Portal (URL Mappings)
-
-- root `/` → `deckofmanythings-a11y.github.io/casino-tracker/`
-- `/supabase` → `uaoxvhihwiygrajicend.supabase.co`
-
-and add the Pages URL as an OAuth2 Redirect URI (required or `authorize()` throws).
+- **Authentication → Providers → Email:** enabled. Confirmation currently off (signups log in
+  immediately); enable it later with SMTP if you want verified emails.
+- **Authentication → URL Configuration:** add the site URL
+  `https://deckofmanythings-a11y.github.io/casino-tracker/` to **Site URL** and the
+  **Redirect URLs** allow-list, so password-reset links return to the app.
 
 ## Versioning
 

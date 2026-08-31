@@ -4,8 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <title>Casino Tracker</title>
+<meta name="theme-color" content="#0d1411">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Casino Tracker">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%230d1411'/%3E%3Ctext y='72' x='50' font-size='58' text-anchor='middle'%3E%F0%9F%8E%B0%3C/text%3E%3C/svg%3E">
 <script src="sb-client.bundle.js?v=1"></script>
-<script src="discord-embedded-app-sdk.js?v=1"></script>
 <style>
   :root{
     color-scheme:dark;
@@ -209,16 +214,58 @@
     padding:10px 12px;border-radius:12px;text-align:center;box-shadow:var(--shadow);}
   #reload-pill.show{display:block;}
   #reload-pill b{display:block;font-size:13px;margin-bottom:1px;}
+
+  /* ── Auth screen ────────────────────────────────────────── */
+  #auth-screen{display:none;min-height:100vh;align-items:center;justify-content:center;padding:24px;}
+  #auth-screen.show{display:flex;}
+  .auth-card{width:100%;max-width:360px;background:var(--panel);border:1px solid var(--border);
+    border-radius:18px;padding:24px 20px;box-shadow:var(--shadow);}
+  .auth-brand{font-size:24px;font-weight:800;text-align:center;letter-spacing:-.5px;}
+  .auth-tagline{font-size:13px;color:var(--muted);text-align:center;margin:4px 0 18px;}
+  .auth-err{color:var(--loss);font-size:12px;min-height:15px;margin-top:8px;line-height:1.35;}
+  .auth-links{display:flex;flex-direction:column;gap:11px;align-items:center;margin-top:18px;}
+  .auth-link{font-size:13px;color:var(--muted);cursor:pointer;}
+  .auth-link b{color:var(--gold);}
+  #signout-row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:22px;
+    padding-top:16px;border-top:1px solid var(--border);}
+  #signout-row .so-email{font-size:12px;color:var(--muted);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 </style>
 </head>
 <body>
 
 <div id="mock-flag">DEMO MODE — mock data, nothing is saved</div>
 <div id="reload-pill"></div>
-<div id="auth-status"><div id="auth-msg">Connecting to Discord…</div>
-  <button id="auth-reconnect" class="btn primary" style="display:none;max-width:220px;margin:16px auto 0;">Reconnect</button>
+<div id="auth-status"><div id="auth-msg">Loading…</div>
+  <button id="auth-reconnect" class="btn primary" style="display:none;max-width:220px;margin:16px auto 0;">Reload</button>
   <div id="auth-debug"></div></div>
 <div id="version-tag"></div>
+
+<!-- ── Auth (email/password) ─────────────────────────────────── -->
+<div id="auth-screen">
+  <div class="auth-card">
+    <div class="auth-brand">🎰 Casino Tracker</div>
+    <div class="auth-tagline" id="auth-tagline">Log your buy-ins, cash-outs &amp; bonuses.</div>
+    <div id="auth-forms">
+      <label class="field">Email</label>
+      <input id="a-email" type="email" inputmode="email" autocomplete="email" placeholder="you@example.com">
+      <div id="a-pw-wrap"><label class="field">Password</label>
+        <input id="a-pw" type="password" autocomplete="current-password" placeholder="••••••••"></div>
+      <div class="auth-err" id="a-err"></div>
+      <button class="btn primary btn-lg" id="a-submit" style="margin-top:14px;">Log in</button>
+      <div class="auth-links">
+        <span id="a-forgot" class="auth-link">Forgot password?</span>
+        <span id="a-toggle" class="auth-link">Need an account? <b>Sign up</b></span>
+      </div>
+    </div>
+    <div id="auth-reset" style="display:none;">
+      <div class="muted" style="font-size:13px;margin-bottom:6px;">Set a new password for your account.</div>
+      <label class="field">New password</label>
+      <input id="r-pw" type="password" autocomplete="new-password" placeholder="••••••••">
+      <div class="auth-err" id="r-err"></div>
+      <button class="btn primary btn-lg" id="r-submit" style="margin-top:14px;">Save new password</button>
+    </div>
+  </div>
+</div>
 
 <div id="app">
   <!-- ── TODAY ─────────────────────────────────────────────── -->
@@ -258,6 +305,10 @@
     <h1 style="font-size:22px;margin:6px 2px 10px;">Fast-Select Games</h1>
     <div id="games-body"></div>
     <button class="btn primary btn-lg" style="margin-top:14px;" data-add-game>+ Add a game</button>
+    <div id="signout-row">
+      <span class="so-email" id="so-email"></span>
+      <button class="btn danger" style="flex:0 0 auto;padding:8px 14px;" id="so-btn">Sign out</button>
+    </div>
   </div>
 </div>
 
@@ -275,11 +326,11 @@
 
 <script>
 // ═══════════════════════════════════════════════════════════════════════════
-//  Casino Session Tracker — Discord Activity frontend
-//  Mirrors the raided-hex Activity stack: Discord-OAuth identity, Supabase-backed
-//  Edge Functions (ct-auth / ct-whoami / ct-data / ct-write), session-token'd.
+//  Casino Session Tracker — standalone web app
+//  Supabase Auth (email/password) identity; Supabase Edge Functions
+//  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.3.4';
+const APP_VERSION='0.4.0';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -301,32 +352,32 @@ window.addEventListener('error',e=>reportErr('error',(e&&(e.error||e))||''));
 window.addEventListener('unhandledrejection',e=>reportErr('promise',e));
 
 // ── Config ─────────────────────────────────────────────────────────────────
-function isDiscordActivity(){return location.hostname.endsWith('.discordsays.com')||new URLSearchParams(location.search).has('frame_id');}
 function withTimeout(p,ms,label){return Promise.race([p,new Promise((_,r)=>setTimeout(()=>r(new Error(label+' timed out')),ms))]);}
 const MOCK=new URLSearchParams(location.search).has('mock');
 
-// Same Supabase project as raided-hex → same URL + publishable anon key.
-const SUPABASE_URL=isDiscordActivity()?(location.origin+'/.proxy/supabase'):'https://uaoxvhihwiygrajicend.supabase.co';
+const SUPABASE_URL='https://uaoxvhihwiygrajicend.supabase.co';
 const FUNCTIONS_URL=SUPABASE_URL+'/functions/v1';
 const SUPABASE_ANON_KEY='sb_publishable_91Zn_uJ9anW46vAClx6-bQ__wLL4fXl';
-// Tracker's own Discord application (separate from raided-hex's).
-const DISCORD_CLIENT_ID='1540385140658933800';
-const SESSION_KEY='casino_tracker_session';
 const CACHE_KEY='casino_tracker_cache';
+// Supabase client handles email/password auth AND persists+auto-refreshes the session
+// in localStorage — that persistence is what makes returning to the tab reliable
+// (unlike the old Discord Activity, which re-authed on every resume).
+const sb=MOCK?null:supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
 
 function genKey(){try{if(crypto.randomUUID)return crypto.randomUUID();}catch(_){}return 'k'+Date.now()+Math.random().toString(36).slice(2);}
-// Persist last-known state so a cold boot (phone-sleep reload) can render instantly
-// from cache instead of blocking on a network round-trip (the "crash" on resume).
+// Cache last-known state so a reload paints instantly instead of flashing a spinner.
+// Tagged with the owner's auth user id so it is NEVER shown to a different user.
 function cacheState(){
-  try{localStorage.setItem(CACHE_KEY,JSON.stringify({account,bootstrap:{
+  try{localStorage.setItem(CACHE_KEY,JSON.stringify({uid:account&&account.auth_user_id,account,bootstrap:{
     today:state.today,games:state.games,active_trip:state.active_trip,
     active_trip_totals:state.active_trip_totals,sessions:state.sessions},ts:Date.now()}));}catch(_){}
 }
 function readCache(){try{const s=localStorage.getItem(CACHE_KEY);return s?JSON.parse(s):null;}catch(_){return null;}}
 
 // ── App state ──────────────────────────────────────────────────────────────
-let sessionToken=null;
 let account=null;
+let userEmail=null;
+let booted=false;
 let state={today:todayLocal(),games:[],active_trip:null,active_trip_totals:null,sessions:[]};
 let currentTab='today';
 let lastJackpots=[];
@@ -379,129 +430,141 @@ function disableCents(inp){
 function applyCents(inp,on){on?enableCents(inp):disableCents(inp);}
 
 // ── API layer (real Edge Functions, or the mock engine below) ───────────────
-async function callFn(name,payload){
+// Every function call carries the signed-in user's JWT as the bearer; the functions
+// validate it (requireUser) and scope all data to that account.
+async function callFn(name,payload,token){
   const res=await fetch(FUNCTIONS_URL+'/'+name,{method:'POST',
-    headers:{'Content-Type':'application/json','Authorization':'Bearer '+SUPABASE_ANON_KEY,'apikey':SUPABASE_ANON_KEY},
+    headers:{'Content-Type':'application/json','apikey':SUPABASE_ANON_KEY,'Authorization':'Bearer '+(token||SUPABASE_ANON_KEY)},
     body:JSON.stringify(payload||{})});
   return res.json();
 }
+async function currentToken(){
+  try{const {data}=await sb.auth.getSession();return data&&data.session?data.session.access_token:null;}catch(_){return null;}
+}
 async function api(name,payload){
   if(MOCK)return mockApi(name,payload);
-  return callFn(name,{...payload,session_token:sessionToken,today:state.today});
+  const token=await currentToken();
+  return callFn(name,{...payload,today:(payload&&payload.today)||state.today},token);
 }
 // Apply a bootstrap payload returned by any read/write to local state.
 function applyBootstrap(b){if(!b)return;state={...state,...b};}
 
-// ── Discord entry / resume ─────────────────────────────────────────────────
-// callFn with a hard timeout so a stalled just-woke network never hangs the boot
-// screen forever (the old flow had no timeout on authorize() or ct-auth).
-function callFnT(name,payload,ms=12000){
-  return withTimeout(callFn(name,payload),ms,name).catch(e=>({ok:false,message:(e&&e.message)||String(e)}));
+// ── Auth (Supabase email/password) ─────────────────────────────────────────
+function callFnT(name,payload,ms=15000){return withTimeout(api(name,payload),ms,name).catch(e=>({ok:false,message:(e&&e.message)||String(e)}));}
+const $=id=>document.getElementById(id);
+function showSplash(msg){$('auth-status').classList.add('show');$('auth-msg').textContent=msg||'Loading…';}
+function hideSplash(){$('auth-status').classList.remove('show');}
+function hideAuthScreen(){$('auth-screen').classList.remove('show');}
+
+let authMode='login';
+function showAuthScreen(mode){
+  authMode=mode||'login';
+  hideSplash();$('app').classList.remove('show');
+  $('auth-reset').style.display='none';$('auth-forms').style.display='block';
+  $('auth-screen').classList.add('show');$('a-err').textContent='';$('a-err').style.color='';
+  const signup=authMode==='signup';
+  $('a-submit').textContent=signup?'Sign up':'Log in';
+  $('a-forgot').style.display=signup?'none':'block';
+  $('a-toggle').innerHTML=signup?'Have an account? <b>Log in</b>':'Need an account? <b>Sign up</b>';
+  $('auth-tagline').textContent=signup?'Create an account to start tracking.':'Log your buy-ins, cash-outs & bonuses.';
 }
-function setAuthMsg(msg){document.getElementById('auth-status').classList.add('show');document.getElementById('auth-msg').textContent=msg;}
-function showReconnect(msg){
-  setAuthMsg(msg||'Couldn’t reach Discord. Tap to retry.');
-  document.getElementById('app').classList.remove('show');
-  document.getElementById('auth-reconnect').style.display='block';
-}
-
-// Entry orchestration: try the SAVED session first (fast, survives phone-sleep
-// reloads), and only fall back to the full Discord OAuth handshake if that fails.
-// This is what makes wake-up reliable — resuming no longer re-runs authorize().
-async function enterDiscord(){
-  document.getElementById('auth-reconnect').style.display='none';
-  document.getElementById('auth-debug').textContent='';
-  state.today=todayLocal();
-
-  // 1) Instant paint from cache so a resume/reload never shows a blank or stuck
-  //    "Connecting…" screen. We reconcile with the server in the background below.
-  const cached=readCache();
-  let painted=false;
-  if(cached&&cached.account){
-    try{
-      account=cached.account;
-      sessionToken=account.session_token||localStorage.getItem(SESSION_KEY);
-      applyBootstrap(cached.bootstrap);
-      document.getElementById('auth-status').classList.remove('show');
-      document.getElementById('app').classList.add('show');
-      setTab(currentTab||'today');
-      painted=true;
-    }catch(e){ // a stale/old-shape cache must never crash boot — fall through to connect
-      console.error('cache render failed',e);
-      account=null;sessionToken=null;try{localStorage.removeItem(CACHE_KEY);}catch(_){}
-    }
-  }
-  if(!painted)setAuthMsg('Connecting…');
-
-  // 2) Reconcile: validate/refresh the saved session in the background.
-  if(await tryRestoreSession())return;               // booted/refreshed from server
-  // ct-whoami didn't restore. If the token was cleared it was invalid/absent → OAuth.
-  // If sessionToken is still set, it was just a network hiccup → keep the cached view.
-  if(!sessionToken)await runDiscordEntry();
-  if(!account)showReconnect();
-}
-document.getElementById('auth-reconnect').addEventListener('click',enterDiscord);
-
-async function tryRestoreSession(){
-  const token=localStorage.getItem(SESSION_KEY);if(!token)return false;
-  sessionToken=token;
-  const data=await callFnT('ct-whoami',{session_token:token,today:state.today});
-  if(!data.ok||!data.account){
-    if(data.message==='Invalid session.'||data.message==='Session expired.'){localStorage.removeItem(SESSION_KEY);sessionToken=null;}
-    return false; // network error → keep token, OAuth fallback / reconnect will retry
-  }
-  boot(data.account,data.bootstrap);return true;
+function showResetForm(){
+  hideSplash();$('app').classList.remove('show');
+  $('auth-forms').style.display='none';$('auth-reset').style.display='block';
+  $('auth-screen').classList.add('show');$('r-err').textContent='';$('r-err').style.color='';
 }
 
-async function runDiscordEntry(){
+$('a-submit').addEventListener('click',async()=>{
+  const email=$('a-email').value.trim(),pw=$('a-pw').value,err=$('a-err');
+  err.textContent='';err.style.color='';
+  if(!email||!pw){err.textContent='Enter your email and password.';return;}
+  if(authMode==='signup'&&pw.length<8){err.textContent='Password must be at least 8 characters.';return;}
+  const btn=$('a-submit');btn.disabled=true;btn.textContent='…';
   try{
-    const {DiscordSDK}=window.DiscordSDKLib;
-    const sdk=new DiscordSDK(DISCORD_CLIENT_ID);
-    await withTimeout(sdk.ready(),20000,'Discord SDK ready()');
-    let code;
-    try{({code}=await withTimeout(sdk.commands.authorize({client_id:DISCORD_CLIENT_ID,response_type:'code',state:'',prompt:'none',scope:['identify']}),20000,'authorize'));}
-    catch(e){({code}=await withTimeout(sdk.commands.authorize({client_id:DISCORD_CLIENT_ID,response_type:'code',state:'',prompt:'consent',scope:['identify']}),20000,'authorize'));}
-    const data=await callFnT('ct-auth',{code,today:state.today});
-    if(!data.ok||!data.account)throw new Error(data.message||'Sign-in failed.');
-    localStorage.setItem(SESSION_KEY,data.account.session_token);
-    boot(data.account,data.bootstrap);
-  }catch(e){
-    console.error('Discord entry failed:',e);
-    document.getElementById('auth-debug').textContent='Debug: '+((e&&e.message)||e);
+    const {data,error}=authMode==='signup'
+      ? await sb.auth.signUp({email,password:pw})
+      : await sb.auth.signInWithPassword({email,password:pw});
+    if(error){err.textContent=error.message;return;}
+    if(authMode==='signup'&&!data.session){err.style.color='var(--muted)';err.textContent='Account created — check your email to confirm, then log in.';authMode='login';return;}
+    // Success → onAuthStateChange(SIGNED_IN) boots the app.
+  }catch(e){err.textContent=(e&&e.message)||'Something went wrong.';}
+  finally{btn.disabled=false;btn.textContent=authMode==='signup'?'Sign up':'Log in';}
+});
+$('a-toggle').addEventListener('click',()=>showAuthScreen(authMode==='signup'?'login':'signup'));
+$('a-forgot').addEventListener('click',async()=>{
+  const email=$('a-email').value.trim(),err=$('a-err');
+  if(!email){err.textContent='Enter your email first, then tap Forgot password.';return;}
+  const {error}=await sb.auth.resetPasswordForEmail(email,{redirectTo:location.origin+location.pathname});
+  err.style.color='var(--muted)';
+  err.textContent=error?error.message:'If that email has an account, a reset link is on its way.';
+});
+$('r-submit').addEventListener('click',async()=>{
+  const pw=$('r-pw').value,err=$('r-err');err.textContent='';err.style.color='';
+  if(pw.length<8){err.textContent='At least 8 characters.';return;}
+  const btn=$('r-submit');btn.disabled=true;
+  const {error}=await sb.auth.updateUser({password:pw});
+  btn.disabled=false;
+  if(error){err.textContent=error.message;return;}
+  err.style.color='var(--muted)';err.textContent='Password updated — loading your tracker…';
+});
+$('a-email').addEventListener('keydown',e=>{if(e.key==='Enter')$('a-pw').focus();});
+$('a-pw').addEventListener('keydown',e=>{if(e.key==='Enter')$('a-submit').click();});
+$('auth-reconnect').addEventListener('click',()=>location.reload());
+
+// After sign-in: paint cache instantly if present, then fetch the fresh bootstrap.
+async function onSignedIn(session){
+  if(booted)return;
+  userEmail=(session&&session.user&&session.user.email)||userEmail;
+  state.today=todayLocal();
+  const uid=session&&session.user&&session.user.id;
+  const cached=readCache();
+  // Only paint from cache when it belongs to THIS user (never flash another user's data).
+  if(cached&&cached.account&&cached.uid&&uid&&cached.uid===uid){
+    try{account=cached.account;applyBootstrap(cached.bootstrap);hideAuthScreen();hideSplash();$('app').classList.add('show');setTab(currentTab||'today');}catch(_){}
   }
+  if(!account){try{localStorage.removeItem(CACHE_KEY);}catch(_){}showSplash('Loading your tracker…');}
+  const data=await callFnT('ct-whoami',{today:state.today});
+  if(data&&data.ok&&data.account){boot(data.account,data.bootstrap);}
+  else if(!account){showSplash((data&&data.message)||'Couldn’t load your data.');$('auth-reconnect').style.display='block';}
 }
 
 function boot(acct,bootstrap){
-  account=acct;sessionToken=acct.session_token||sessionToken;
-  applyBootstrap(bootstrap);
-  cacheState();
-  document.getElementById('auth-reconnect').style.display='none';
-  document.getElementById('auth-status').classList.remove('show');
-  document.getElementById('app').classList.add('show');
+  account=acct;booted=true;
+  applyBootstrap(bootstrap);cacheState();
+  hideAuthScreen();hideSplash();
+  $('auth-reconnect').style.display='none';
+  $('app').classList.add('show');
   setTab(currentTab||'today');
 }
 
-// Resume handler: when the Activity becomes visible again after the phone slept, the
-// iframe may have survived (stale data) or reloaded (cold boot handled by enterDiscord).
-// If we still have a session, silently refresh; if it was lost, reconnect.
+async function doSignOut(){
+  try{await sb.auth.signOut();}catch(_){}
+  try{localStorage.removeItem(CACHE_KEY);}catch(_){}
+  account=null;booted=false;userEmail=null;
+  state={today:todayLocal(),games:[],active_trip:null,active_trip_totals:null,sessions:[]};
+  $('app').classList.remove('show');
+  showAuthScreen('login');
+}
+
+// Resume: refresh today's data when returning to the tab. supabase-js keeps the
+// session alive/refreshed, so no re-auth — only a truly dead session logs out.
 let resuming=false;
 async function onResume(){
-  if(MOCK||resuming||document.visibilityState!=='visible')return;
+  if(MOCK||resuming||!booted||document.visibilityState!=='visible')return;
   resuming=true;
   try{
-    state.today=todayLocal(); // date may have rolled to a new gambling day
-    if(account&&sessionToken){
-      const r=await callFnT('ct-data',{session_token:sessionToken,view:'today',today:state.today});
-      if(r&&r.ok&&r.bootstrap){applyBootstrap(r.bootstrap);cacheState();
-        if(currentTab==='today')renderToday();else if(currentTab==='bankroll')renderBankroll();}
-      else if(r&&(r.message==='Invalid session.'||r.message==='Session expired.')){account=null;enterDiscord();}
-    }else if(isDiscordActivity()){
-      enterDiscord();
+    state.today=todayLocal();
+    const r=await callFnT('ct-data',{view:'today',today:state.today});
+    if(r&&r.ok&&r.bootstrap){applyBootstrap(r.bootstrap);cacheState();
+      if(currentTab==='today')renderToday();else if(currentTab==='bankroll')renderBankroll();}
+    else if(r&&r.message&&/sign in|expired|not signed/i.test(r.message)){
+      const {data}=await sb.auth.getSession();
+      if(!data||!data.session){booted=false;doSignOut();}
     }
-  }finally{resuming=false;}
+  }catch(_){}
+  finally{resuming=false;}
 }
 document.addEventListener('visibilitychange',onResume);
-window.addEventListener('pageshow',e=>{if(e.persisted)onResume();});
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  Rendering
@@ -1076,6 +1139,8 @@ function renderBankroll(){
 // ── Games manager ────────────────────────────────────────────────────────────
 function renderGames(){
   const body=document.getElementById('games-body');
+  const so=document.getElementById('so-email');if(so)so.textContent=MOCK?'demo mode':(userEmail||(account&&account.email)||'');
+  const sob=document.getElementById('so-btn');if(sob&&!sob._bound){sob._bound=1;sob.addEventListener('click',doSignOut);}
   const games=state.games||[];
   if(games.length===0){body.innerHTML='<div class="empty">No fast-select games yet.<br>Add the machines/tables you play most.</div>';return;}
   const hint=games.length>1?'<div class="reorder-hint">Use ▲▼ to reorder — this is your Today tap order.</div>':'';
@@ -1241,19 +1306,21 @@ function mockStats(){
 // ═══════════════════════════════════════════════════════════════════════════
 //  Entry point
 // ═══════════════════════════════════════════════════════════════════════════
-// Inset content below Discord's mobile top chrome (app dropdown + Leave button).
-if(isDiscordActivity())document.body.classList.add('in-discord');
 if(MOCK){
   document.getElementById('mock-flag').style.display='block';
   mockSeed();
   boot(mockDB.account,mockBootstrap(todayLocal()));
-}else if(isDiscordActivity()){
-  enterDiscord();
 }else{
-  // Plain browser (no Discord): try a stored session, else prompt to open in Discord.
-  document.getElementById('auth-status').classList.add('show');
-  tryRestoreSession().then(()=>{if(!account){
-    document.getElementById('auth-status').innerHTML='Open this inside Discord to sign in.<br><span class="faint" style="font-size:12px">(or add <b>?mock=1</b> to preview with demo data)</span>';}});
+  // Supabase Auth: react to sign-in / sign-out / password-recovery. supabase-js fires
+  // INITIAL_SESSION on load with the persisted session (or null), which drives the
+  // first render — no manual getSession() race.
+  showSplash('Loading…');
+  sb.auth.onAuthStateChange((event,session)=>{
+    if(event==='PASSWORD_RECOVERY'){showResetForm();return;}
+    if(event==='SIGNED_OUT'){booted=false;account=null;showAuthScreen('login');return;}
+    if(session&&session.user){ if(!booted)onSignedIn(session); }
+    else if(event==='INITIAL_SESSION'){ showAuthScreen('login'); }
+  });
 }
 </script>
 </body>
