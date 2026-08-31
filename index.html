@@ -37,7 +37,7 @@
   #auth-status{display:none;padding:calc(60px + var(--top-inset)) 24px 60px;text-align:center;font-size:14px;color:var(--muted);}
   #auth-status.show{display:block;}
   #auth-debug{font-size:11px;color:var(--faint);margin-top:10px;word-break:break-word;font-family:monospace;}
-  #app{display:none;max-width:520px;margin:0 auto;padding:var(--top-inset) 14px calc(88px + var(--safe-bottom));}
+  #app{display:none;max-width:520px;margin:0 auto;padding:calc(var(--top-inset) + 40px) 14px calc(88px + var(--safe-bottom));}
   #app.show{display:block;}
   .screen{display:none;padding-top:14px;}
   .screen.show{display:block;}
@@ -354,7 +354,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.5.1';
+const APP_VERSION='0.5.2';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -406,7 +406,7 @@ let state={today:todayLocal(),games:[],active_trip:null,active_trip_totals:null,
 let currentTab='today';
 let lastJackpots=[];
 let favExpanded=false;
-const FAV_CAP=7;
+const FAV_CAP=8;
 
 // ── Formatting helpers ─────────────────────────────────────────────────────
 function todayLocal(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
