@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <title>Casino Tracker</title>
-<meta name="theme-color" content="#0d1411">
+<meta name="theme-color" content="#ece5d4">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Casino Tracker">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=1">
@@ -253,6 +253,77 @@
   #signout-row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:22px;
     padding-top:16px;border-top:1px solid var(--border);}
   #signout-row .so-email{font-size:12px;color:var(--muted);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+
+  /* ═══════════════════ MARBLE THEME — light stone + shiny gold-bevel edges ═══════════════════
+     Appended as an override layer: later source wins for equal specificity, so this restyles
+     the dark tokens + per-surface backgrounds without touching the structural rules above.
+     Every "cell" edge is a light→deep→light gold gradient (beveled metal rim) via the
+     double-background technique (solid marble face on padding-box, gold on border-box).
+     Win/loss numbers stay green/red on purpose. */
+  :root{
+    color-scheme:light;
+    --bg:#e7e0cf; --panel:#f6f2e8; --panel2:#efe8d9; --border:#caa24e;
+    --text:#241d12; --muted:#877852; --faint:#b0a37e;
+    --gold:#a9801f; --gold-dim:#8a6a2a;
+    --win:#1f9d5f; --loss:#d8433f; --chip:#ece3cf;
+    --shadow:0 8px 22px rgba(60,45,20,.16);
+    --edge:linear-gradient(135deg,#fbeeb0,#e6c366 26%,#a97e30 55%,#f6e29a 80%,#c9a24e);
+    --edge-soft:linear-gradient(135deg,#f3e3a8,#caa24e 60%,#e9cd7e);
+  }
+  body{background:
+      radial-gradient(130% 90% at 50% -20%, #f4eede 0%, rgba(244,238,222,0) 55%),
+      linear-gradient(180deg,#eae3d2,#e0d8c3);
+    background-attachment:fixed;color:var(--text);}
+
+  /* Marble-faced surfaces with a gold bevel edge */
+  .card,.day-header,.trip-banner,.tile,.sess-row,.game-row,.jp-row,.sheet-panel,.auth-card,
+  .money-block,.bonus-row,.toggle-row{
+    border:2px solid transparent;
+    background:linear-gradient(var(--surf,#f6f2e8),var(--surf,#f6f2e8)) padding-box, var(--edge) border-box;}
+  .money-block,.bonus-row,.toggle-row{--surf:#efe8d9;}
+  .trip-banner{--surf:#f8f0d6;}
+  .card{box-shadow:var(--shadow);}
+  .session-card.active{box-shadow:0 0 0 2px rgba(169,128,31,.55),var(--shadow);}
+
+  /* Fast-select tiles */
+  .fast-chip{border:2px solid transparent;
+    background:linear-gradient(#f6f2e8,#f6f2e8) padding-box, var(--edge) border-box;}
+  .fast-chip.more{background:linear-gradient(#efe8d9,#efe8d9) padding-box, var(--edge) border-box;}
+  .fast-chip.new{border:2px dashed var(--gold-dim);background:#f1ead9;color:var(--gold);}
+  .fast-chip.has-art{border:2px solid var(--gold-dim);background-color:#0a0e0c;}
+
+  /* Buttons */
+  .btn{border:2px solid transparent;color:var(--text);
+    background:linear-gradient(#efe8d9,#efe8d9) padding-box, var(--edge-soft) border-box;}
+  .btn.primary{color:#2a1c04;
+    background:linear-gradient(135deg,#f8e79f,#d8ab44) padding-box, var(--edge) border-box;}
+  .btn.win{color:#177a48;
+    background:linear-gradient(rgba(31,157,95,.14),rgba(31,157,95,.14)) padding-box, var(--edge) border-box;}
+  .btn.danger{color:var(--loss);
+    background:linear-gradient(rgba(216,67,63,.12),rgba(216,67,63,.12)) padding-box, var(--edge) border-box;}
+  .icon-btn{background:var(--chip);border:1px solid var(--gold-dim);color:var(--gold-dim);}
+
+  /* Inputs + segmented controls */
+  input,select,textarea,.seg button{border:2px solid transparent;color:var(--text);
+    background:linear-gradient(#efe8d9,#efe8d9) padding-box, var(--edge-soft) border-box;}
+  .seg button{color:var(--muted);}
+  .seg button.sel{color:#2a1c04;
+    background:linear-gradient(135deg,#f8e79f,#d8ab44) padding-box, var(--edge) border-box;}
+  input:focus,select:focus,textarea:focus{box-shadow:0 0 0 2px rgba(169,128,31,.4);}
+  .money-input .dollar{color:var(--muted);}
+
+  /* Toggle switch */
+  .switch{background:#ddcfa6;}
+  .switch.on{background:var(--gold);}
+  .switch::after{background:#fff;box-shadow:0 1px 2px rgba(60,45,20,.3);}
+  .sheet-grip{background:#dcc78f;}
+
+  /* Overlays / nav / misc chrome for a light ground */
+  #sheet{background:rgba(38,28,10,.42);}
+  #nav{background:rgba(247,243,233,.9);border-top:1px solid var(--gold-dim);}
+  #reload-pill{background:#fbe9e7;border:1px solid var(--loss);color:#8a241f;}
+  #reload-pill b{color:#8a241f;}
+  #mock-flag{color:#2a1c04;}
 </style>
 </head>
 <body>
@@ -354,7 +425,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.5.3';
+const APP_VERSION='0.6.0';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
