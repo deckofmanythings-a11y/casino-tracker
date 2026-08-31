@@ -29,9 +29,9 @@
     body.in-discord{--top-inset:calc(env(safe-area-inset-top,0px) + 52px);}
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
-  body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:
-    radial-gradient(1200px 600px at 50% -10%,#16241d 0%,var(--bg) 60%) fixed;
-    color:var(--text);min-height:100vh;}
+  body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    background:var(--bg);color:var(--text);min-height:100vh;
+    -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;}
   #auth-status{display:none;padding:calc(60px + var(--top-inset)) 24px 60px;text-align:center;font-size:14px;color:var(--muted);}
   #auth-status.show{display:block;}
   #auth-debug{font-size:11px;color:var(--faint);margin-top:10px;word-break:break-word;font-family:monospace;}
@@ -46,13 +46,10 @@
   .card{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:14px;box-shadow:var(--shadow);}
 
   /* ── Day header ─────────────────────────────────────────── */
-  .day-header{display:flex;flex-direction:column;align-items:center;text-align:center;padding:22px 14px 16px;
-    background:linear-gradient(180deg,var(--panel) 0%,var(--panel2) 100%);border:1px solid var(--border);
-    border-radius:18px;box-shadow:var(--shadow);position:relative;overflow:hidden;}
-  .day-header::before{content:"";position:absolute;inset:0;background:
-    radial-gradient(600px 120px at 50% 0,rgba(231,193,92,.10),transparent 70%);pointer-events:none;}
-  .day-date{font-size:13px;color:var(--muted);letter-spacing:.4px;}
-  .day-net{font-size:44px;font-weight:800;line-height:1.05;margin:6px 0 4px;letter-spacing:-1px;}
+  .day-header{display:flex;flex-direction:column;align-items:center;text-align:center;padding:18px 14px 15px;
+    background:var(--panel);border:1px solid var(--border);border-radius:16px;}
+  .day-date{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1.4px;font-weight:600;}
+  .day-net{font-size:42px;font-weight:800;line-height:1.02;margin:5px 0 5px;letter-spacing:-1.4px;}
   .day-sub{display:flex;gap:16px;font-size:13px;color:var(--muted);flex-wrap:wrap;justify-content:center;}
   .day-sub b{color:var(--text);font-weight:600;}
 
@@ -77,6 +74,10 @@
   .fast-chip .fc-cat{font-size:15px;}
   .fast-chip.new{display:flex;align-items:center;justify-content:center;border-style:dashed;
     color:var(--gold);font-weight:700;font-size:14px;min-height:100%;}
+  .fast-chip.more{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;
+    background:var(--panel2);min-height:100%;}
+  .fast-chip.more .mc-plus{font-size:17px;font-weight:800;color:var(--gold);letter-spacing:-.5px;}
+  .fast-chip.more .mc-label{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.6px;}
   /* Art tiles: image is shrunk to fit (not cropped); a bottom scrim keeps the name legible. */
   .fast-chip.has-art{position:relative;padding:0;min-height:96px;border-color:var(--border);
     background-size:contain;background-repeat:no-repeat;background-position:center;
@@ -150,8 +151,8 @@
   .btn{flex:1;padding:11px;border-radius:12px;font-size:14px;font-weight:700;background:var(--panel2);
     color:var(--text);border:1px solid var(--border);transition:transform .06s,filter .15s;}
   .btn:active{transform:scale(.97);}
-  .btn.primary{background:linear-gradient(180deg,var(--gold) 0%,var(--gold-dim) 100%);color:#241c00;border-color:var(--gold-dim);}
-  .btn.win{background:linear-gradient(180deg,#4fe0955c,#1f5c3f4a);border-color:#2e6f4d;color:var(--win);}
+  .btn.primary{background:var(--gold);color:#231a02;border-color:var(--gold);font-weight:700;}
+  .btn.win{background:rgba(72,215,141,.12);border-color:#2e6f4d;color:var(--win);}
   .btn.danger{background:transparent;border-color:#5a2b2b;color:var(--loss);}
   .btn:disabled{opacity:.45;}
   .btn-lg{width:100%;padding:14px;font-size:15px;}
@@ -217,11 +218,14 @@
     background:rgba(13,20,17,.92);backdrop-filter:blur(12px);border-top:1px solid var(--border);
     padding-bottom:var(--safe-bottom);}
   #nav .nav-inner{display:flex;width:100%;max-width:520px;}
-  .nav-btn{flex:1;background:none;border:none;color:var(--faint);padding:9px 4px 8px;display:flex;
-    flex-direction:column;align-items:center;gap:3px;font-size:10px;font-weight:600;letter-spacing:.2px;}
-  .nav-btn .ic{font-size:20px;line-height:1;filter:grayscale(1) opacity(.6);}
+  .nav-btn{flex:1;background:none;border:none;color:var(--muted);padding:9px 4px 8px;display:flex;
+    flex-direction:column;align-items:center;gap:4px;font-size:10px;font-weight:600;letter-spacing:.3px;
+    transition:color .15s;}
+  .nav-btn .ic{display:flex;line-height:0;}
+  .nav-btn .ic svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.7;
+    stroke-linecap:round;stroke-linejoin:round;}
+  .nav-btn .ic svg .dot{fill:currentColor;stroke:none;}
   .nav-btn.sel{color:var(--gold);}
-  .nav-btn.sel .ic{filter:none;}
 
   #version-tag{position:fixed;bottom:calc(60px + var(--safe-bottom));right:8px;font-size:9px;color:var(--faint);
     font-family:monospace;z-index:40;pointer-events:none;}
@@ -335,11 +339,11 @@
 </div></div>
 
 <nav id="nav"><div class="nav-inner">
-  <button class="nav-btn" data-tab="today"><span class="ic">🎰</span>Today</button>
-  <button class="nav-btn" data-tab="history"><span class="ic">📜</span>History</button>
-  <button class="nav-btn" data-tab="stats"><span class="ic">📊</span>Stats</button>
-  <button class="nav-btn" data-tab="bankroll"><span class="ic">💰</span>Bankroll</button>
-  <button class="nav-btn" data-tab="games"><span class="ic">🎯</span>Games</button>
+  <button class="nav-btn" data-tab="today"><span class="ic"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.6"/><rect x="14" y="3" width="7" height="7" rx="1.6"/><rect x="3" y="14" width="7" height="7" rx="1.6"/><rect x="14" y="14" width="7" height="7" rx="1.6"/></svg></span>Today</button>
+  <button class="nav-btn" data-tab="history"><span class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3.2 2"/></svg></span>History</button>
+  <button class="nav-btn" data-tab="stats"><span class="ic"><svg viewBox="0 0 24 24"><path d="M4 20V11"/><path d="M10 20V5"/><path d="M16 20v-6"/><path d="M21 20H3"/></svg></span>Stats</button>
+  <button class="nav-btn" data-tab="bankroll"><span class="ic"><svg viewBox="0 0 24 24"><path d="M4 8V6.5A2 2 0 0 1 6 4.5h11"/><path d="M3.5 8h15a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/><circle class="dot" cx="16.5" cy="13.5" r="1.3"/></svg></span>Bankroll</button>
+  <button class="nav-btn" data-tab="games"><span class="ic"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3.5"/><circle class="dot" cx="9" cy="9" r="1.2"/><circle class="dot" cx="12" cy="12" r="1.2"/><circle class="dot" cx="15" cy="15" r="1.2"/></svg></span>Games</button>
 </div></nav>
 
 <script>
@@ -348,7 +352,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.4.2';
+const APP_VERSION='0.5.0';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -399,6 +403,8 @@ let booted=false;
 let state={today:todayLocal(),games:[],active_trip:null,active_trip_totals:null,sessions:[]};
 let currentTab='today';
 let lastJackpots=[];
+let favExpanded=false;
+const FAV_CAP=7;
 
 // ── Formatting helpers ─────────────────────────────────────────────────────
 function todayLocal(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
@@ -602,6 +608,17 @@ function setTab(tab){
 document.querySelectorAll('.nav-btn').forEach(b=>b.addEventListener('click',()=>setTab(b.dataset.tab)));
 
 // ── Today ──────────────────────────────────────────────────────────────────
+function favChip(g){
+  const art=g.image_url&&g.image_url.indexOf('mock://')!==0;
+  const sub=g.default_bet!=null?money(g.default_bet)+' bet':catLabel(g.category);
+  if(art)return `<div class="fast-chip has-art" data-game="${g.id}" style="background-image:url(&quot;${g.image_url}&quot;)">
+    <div class="fc-scrim"></div>
+    <div class="fc-text"><div class="fc-name">${esc(g.name)}</div><div class="fc-sub">${sub}</div></div></div>`;
+  return `<div class="fast-chip" data-game="${g.id}">
+    <div class="fc-cat">${catIcon(g.category)}</div>
+    <div class="fc-name">${esc(g.name)}</div>
+    <div class="fc-sub">${sub}</div></div>`;
+}
 function renderToday(){
   const sessions=state.sessions||[];
   const dayIn=sessions.reduce((s,x)=>s+num(x.buy_in_total),0);
@@ -627,18 +644,17 @@ function renderToday(){
   // Fast select
   const fs=document.getElementById('fast-select');
   const games=(state.games||[]);
-  fs.innerHTML=games.map(g=>{
-    const art=g.image_url&&g.image_url.indexOf('mock://')!==0;
-    if(art)return `<div class="fast-chip has-art" data-game="${g.id}" style="background-image:url(&quot;${g.image_url}&quot;)">
-      <div class="fc-scrim"></div>
-      <div class="fc-text"><div class="fc-name">${esc(g.name)}</div>
-      <div class="fc-sub">${g.default_bet!=null?money(g.default_bet)+' bet':catLabel(g.category)}</div></div></div>`;
-    return `<div class="fast-chip" data-game="${g.id}">
-      <div class="fc-cat">${catIcon(g.category)}</div>
-      <div class="fc-name">${esc(g.name)}</div>
-      <div class="fc-sub">${g.default_bet!=null?money(g.default_bet)+' bet':catLabel(g.category)}</div>
-    </div>`;
-  }).join('')+`<div class="fast-chip new" data-game="__new">+ New</div>`;
+  const collapsed=!favExpanded&&games.length>FAV_CAP;   // show 7 + a "More" tile past that
+  const shown=collapsed?games.slice(0,FAV_CAP):games;
+  let html=shown.map(favChip).join('');
+  if(collapsed){
+    html+=`<div class="fast-chip more" data-fav="more"><div class="mc-plus">+${games.length-FAV_CAP}</div><div class="mc-label">More</div></div>`;
+  }else{
+    html+=`<div class="fast-chip new" data-game="__new">+ New</div>`;
+    if(favExpanded&&games.length>FAV_CAP)html+=`<div class="fast-chip more" data-fav="less"><div class="mc-label">Show less</div></div>`;
+  }
+  fs.innerHTML=html;
+  fs.querySelectorAll('[data-fav]').forEach(el=>el.addEventListener('click',()=>{favExpanded=el.dataset.fav==='more';renderToday();}));
   fs.querySelectorAll('[data-game]').forEach(el=>el.addEventListener('click',()=>{
     if(el.dataset.game==='__new')openSessionSheet();
     else openSessionSheet(games.find(g=>g.id===el.dataset.game));
