@@ -151,6 +151,8 @@
   .jp-row .jp-amt{font-weight:800;color:var(--gold);}
   .jp-row .jp-main{flex:1;min-width:0;}
   .jp-row .jp-sub{font-size:11px;color:var(--muted);}
+  .jp-row .tb-rank{width:24px;text-align:center;font-size:15px;flex:0 0 auto;}
+  .jp-row .tb-mult{font-weight:800;color:var(--gold);min-width:60px;font-size:16px;}
 
   /* ── Bottom sheet / modal ───────────────────────────────── */
   #sheet{position:fixed;inset:0;z-index:100;display:none;align-items:flex-end;justify-content:center;
@@ -277,7 +279,7 @@
 //  Mirrors the raided-hex Activity stack: Discord-OAuth identity, Supabase-backed
 //  Edge Functions (ct-auth / ct-whoami / ct-data / ct-write), session-token'd.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.3.3';
+const APP_VERSION='0.3.4';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -992,6 +994,8 @@ async function loadStats(){
       <div class="tile"><div class="t-label">Bonuses won</div><div class="t-val">${money(st.total_bonus_won)}</div>
         <div class="muted" style="font-size:11px;">${st.bonus_count} total</div></div>
     </div>
+    ${st.top_bonuses&&st.top_bonuses.length?`<div class="section-label">🏆 Biggest bonuses — all time</div>
+      ${st.top_bonuses.map(topBonusRow).join('')}`:''}
     ${st.by_game.length?`<div class="section-label">Net by game</div><div class="card">${st.by_game.map(g=>bar(g,maxAbs)).join('')}</div>`:''}
     ${st.by_casino.length>0?`<div class="section-label">Net by casino</div><div class="card">${st.by_casino.map(g=>bar(g,casMax)).join('')}</div>`:''}
     ${st.jackpots.length?`<div class="section-label">W-2G jackpots (≥ $1,200)</div>
@@ -1011,6 +1015,15 @@ function jpRow(j){
   return `<div class="jp-row"><div class="jp-amt">${money(j.amount)}</div>
     <div class="jp-main"><div>${esc(j.machine_name||sess.game_name||'Jackpot')}</div>
       <div class="jp-sub">${date}${sess.casino?' · '+esc(sess.casino):''}${j.multiple?' · '+fmtMult(j.multiple):''}</div></div></div>`;
+}
+function topBonusRow(b,i){
+  const sess=b.ct_sessions||{};const date=sess.session_date?prettyDate(sess.session_date):'';
+  const medal=['🥇','🥈','🥉'][i]||('#'+(i+1));
+  return `<div class="jp-row">
+    <div class="tb-rank">${medal}</div>
+    <div class="tb-mult">${fmtMult(b.multiple)}</div>
+    <div class="jp-main"><div>${esc(b.machine_name||sess.game_name||'Bonus')} · ${money(b.amount)}${b.is_jackpot?' <span class="jackpot-badge">W-2G</span>':''}</div>
+      <div class="jp-sub">${date}${sess.casino?' · '+esc(sess.casino):''}${b.base_bet?' · '+money(b.base_bet)+' bet':''}</div></div></div>`;
 }
 function copyJackpots(list){
   const lines=list.map(j=>{const s=j.ct_sessions||{};
@@ -1221,7 +1234,8 @@ function mockStats(){
     total_cashed_out:closed.reduce((a,s)=>a+num(s.cash_out),0),session_count:closed.length,open_count:sessions.length-closed.length,
     biggest_win:nets.length?Math.max(...nets):0,biggest_loss:nets.length?Math.min(...nets):0,biggest_bonus,
     total_bonus_won:bonuses.reduce((a,b)=>a+num(b.amount),0),bonus_count:bonuses.length,
-    by_game:group('game_name'),by_casino:group('casino'),jackpots:bonuses.filter(b=>b.is_jackpot).sort((a,b)=>num(b.amount)-num(a.amount))};
+    by_game:group('game_name'),by_casino:group('casino'),jackpots:bonuses.filter(b=>b.is_jackpot).sort((a,b)=>num(b.amount)-num(a.amount)),
+    top_bonuses:bonuses.filter(b=>b.multiple!=null).sort((a,b)=>num(b.multiple)-num(a.multiple)).slice(0,15)};
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
