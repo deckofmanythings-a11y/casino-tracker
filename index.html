@@ -354,7 +354,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.5.2';
+const APP_VERSION='0.5.3';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -405,6 +405,8 @@ let booted=false;
 let state={today:todayLocal(),games:[],active_trip:null,active_trip_totals:null,sessions:[]};
 let currentTab='today';
 let lastJackpots=[];
+let statsData=null;
+let bonusShown=3;
 let favExpanded=false;
 const FAV_CAP=8;
 
@@ -1109,12 +1111,29 @@ async function loadStats(){
   body.innerHTML='<div class="empty">Loading…</div>';
   const r=await api('ct-data',{view:'stats'});
   if(!r.ok){body.innerHTML='<div class="empty">Could not load stats.</div>';return;}
-  const st=r.stats;
-  lastJackpots=st.jackpots||[];
-  if(st.session_count===0&&st.open_count===0){body.innerHTML='<div class="empty">No data yet — log a few sessions first.</div>';return;}
+  statsData=r.stats;
+  lastJackpots=statsData.jackpots||[];
+  bonusShown=3;
+  if(statsData.session_count===0&&statsData.open_count===0){body.innerHTML='<div class="empty">No data yet — log a few sessions first.</div>';return;}
+  renderStatsBody();
+}
+function renderStatsBody(){
+  const st=statsData;if(!st)return;
+  const body=document.getElementById('stats-body');
   const bb=st.biggest_bonus;
   const maxAbs=Math.max(1,...st.by_game.map(g=>Math.abs(g.net)));
   const casMax=Math.max(1,...st.by_casino.map(g=>Math.abs(g.net)));
+  // Biggest-bonus leaderboard: reveal 3 → 10 → 20 … until the full list is shown.
+  const tb=st.top_bonuses||[];
+  const nShown=Math.min(bonusShown,tb.length);
+  let board='';
+  if(tb.length){
+    board=`<div class="section-label">Biggest bonuses — all time</div>`+tb.slice(0,nShown).map(topBonusRow).join('');
+    const ctrls=[];
+    if(nShown<tb.length){const next=bonusShown===3?10:bonusShown+10;const add=Math.min(next,tb.length)-nShown;ctrls.push(`<button class="btn" data-bonus-more>Show ${add} more</button>`);}
+    if(bonusShown>3)ctrls.push(`<button class="btn" data-bonus-less>Show fewer</button>`);
+    if(ctrls.length)board+=`<div class="row2" style="margin-top:8px;">${ctrls.join('')}</div>`;
+  }
   body.innerHTML=`
     <div class="tile span2" style="text-align:center;">
       <div class="t-label">Lifetime net</div>
@@ -1129,14 +1148,15 @@ async function loadStats(){
       <div class="tile"><div class="t-label">Bonuses won</div><div class="t-val">${money(st.total_bonus_won)}</div>
         <div class="muted" style="font-size:11px;">${st.bonus_count} total</div></div>
     </div>
-    ${st.top_bonuses&&st.top_bonuses.length?`<div class="section-label">🏆 Biggest bonuses — all time</div>
-      ${st.top_bonuses.map(topBonusRow).join('')}`:''}
+    ${board}
     ${st.by_game.length?`<div class="section-label">Net by game</div><div class="card">${st.by_game.map(g=>bar(g,maxAbs)).join('')}</div>`:''}
     ${st.by_casino.length>0?`<div class="section-label">Net by casino</div><div class="card">${st.by_casino.map(g=>bar(g,casMax)).join('')}</div>`:''}
     ${st.jackpots.length?`<div class="section-label">W-2G jackpots (≥ $1,200)</div>
-      <button class="btn" style="margin-bottom:8px;" data-copy-jackpots>📋 Copy list for taxes</button>
+      <button class="btn" style="margin-bottom:8px;" data-copy-jackpots>Copy list for taxes</button>
       ${st.jackpots.map(jpRow).join('')}`:''}
   `;
+  const mb=body.querySelector('[data-bonus-more]');if(mb)mb.addEventListener('click',()=>{bonusShown=bonusShown===3?10:bonusShown+10;renderStatsBody();});
+  const lb=body.querySelector('[data-bonus-less]');if(lb)lb.addEventListener('click',()=>{bonusShown=3;renderStatsBody();});
 }
 function bar(g,maxAbs){
   const w=Math.round(Math.abs(g.net)/maxAbs*100);
@@ -1409,7 +1429,7 @@ function mockStats(){
     biggest_win:nets.length?Math.max(...nets):0,biggest_loss:nets.length?Math.min(...nets):0,biggest_bonus,
     total_bonus_won:bonuses.reduce((a,b)=>a+num(b.amount),0),bonus_count:bonuses.length,
     by_game:group('game_name'),by_casino:group('casino'),jackpots:bonuses.filter(b=>b.is_jackpot).sort((a,b)=>num(b.amount)-num(a.amount)),
-    top_bonuses:bonuses.filter(b=>b.multiple!=null).sort((a,b)=>num(b.multiple)-num(a.multiple)).slice(0,15)};
+    top_bonuses:bonuses.filter(b=>b.multiple!=null).sort((a,b)=>num(b.multiple)-num(a.multiple)).slice(0,200)};
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
