@@ -277,7 +277,7 @@
 //  Mirrors the raided-hex Activity stack: Discord-OAuth identity, Supabase-backed
 //  Edge Functions (ct-auth / ct-whoami / ct-data / ct-write), session-token'd.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.3.2';
+const APP_VERSION='0.3.3';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -753,6 +753,9 @@ function openEditSession(id){
     <label class="field">Casino</label><input id="e-casino" value="${esc(s.casino||'')}">
     <label class="field">Notes</label><textarea id="e-notes" placeholder="Anything worth remembering…">${esc(s.notes||'')}</textarea>
     ${isOpen(s)?'':`<label class="field">Cash-out</label><div class="money-input"><span class="dollar">$</span><input id="e-cashout" inputmode="decimal" value="${s.cash_out??''}"></div>`}
+    ${isSlotty(s.category)?`<label class="field">Bonuses</label>
+      <div id="e-bonuses"></div>
+      <button class="btn" id="e-addbonus" style="margin-top:8px;">✨ Log a bonus</button>`:''}
     <div class="sheet-actions">
       <button class="btn danger" id="e-del">Delete</button>
       <button class="btn primary" id="e-save">Save</button>
@@ -761,6 +764,25 @@ function openEditSession(id){
     let selCat=s.category;
     enableCents(document.getElementById('e-denom'));enableCents(document.getElementById('e-bet'));
     applyCents(document.getElementById('e-cashout'),usesCents(selCat));
+    // Bonus review: every bonus logged for this session, with its base-bet multiple.
+    // Bonuses persist forever — this just surfaces them again after the session closed.
+    if(isSlotty(s.category)){
+      const wrap=document.getElementById('e-bonuses');
+      const renderB=()=>{
+        const bl=s.ct_bonuses||[];
+        const total=bl.reduce((x,b)=>x+num(b.amount),0);
+        const best=bl.reduce((m,b)=>Math.max(m,num(b.multiple)),0);
+        wrap.innerHTML=bl.length
+          ? `<div class="muted" style="font-size:11px;margin-bottom:6px;">${bl.length} bonus${bl.length===1?'':'es'} · ${money(total)} won${best?' · best '+fmtMult(best):''}</div><div class="bonus-list">${bl.map(bonusRow).join('')}</div>`
+          : '<div class="muted" style="font-size:12px;">No bonuses logged for this session.</div>';
+        wrap.querySelectorAll('[data-delbonus]').forEach(b=>b.addEventListener('click',async()=>{
+          const r=await api('ct-write',{action:'delete-bonus',id:b.dataset.delbonus});
+          if(r&&r.ok){s.ct_bonuses=(s.ct_bonuses||[]).filter(x=>x.id!==b.dataset.delbonus);applyBootstrap(r.bootstrap);cacheState();renderB();}
+        }));
+      };
+      renderB();
+      document.getElementById('e-addbonus').addEventListener('click',()=>openBonusSheet(s.id));
+    }
     document.querySelectorAll('#e-cat button').forEach(b=>b.addEventListener('click',()=>{
       selCat=b.dataset.cat;document.querySelectorAll('#e-cat button').forEach(x=>x.classList.toggle('sel',x===b));
       applyCents(document.getElementById('e-cashout'),usesCents(selCat));}));
