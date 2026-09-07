@@ -395,6 +395,12 @@
     <div id="bankroll-body"></div>
   </div>
 
+  <!-- ── STAKING ───────────────────────────────────────────── -->
+  <div id="screen-staking" class="screen">
+    <h1 style="font-size:22px;margin:6px 2px 4px;">Staking</h1>
+    <div id="staking-body"></div>
+  </div>
+
   <!-- ── GAMES ─────────────────────────────────────────────── -->
   <div id="screen-games" class="screen">
     <h1 style="font-size:22px;margin:6px 2px 10px;">Fast-Select Games</h1>
@@ -416,6 +422,7 @@
   <button class="nav-btn" data-tab="history"><span class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3.2 2"/></svg></span>History</button>
   <button class="nav-btn" data-tab="stats"><span class="ic"><svg viewBox="0 0 24 24"><path d="M4 20V11"/><path d="M10 20V5"/><path d="M16 20v-6"/><path d="M21 20H3"/></svg></span>Stats</button>
   <button class="nav-btn" data-tab="bankroll"><span class="ic"><svg viewBox="0 0 24 24"><path d="M4 8V6.5A2 2 0 0 1 6 4.5h11"/><path d="M3.5 8h15a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/><circle class="dot" cx="16.5" cy="13.5" r="1.3"/></svg></span>Bankroll</button>
+  <button class="nav-btn" data-tab="staking"><span class="ic"><svg viewBox="0 0 24 24"><circle cx="8.5" cy="8" r="2.7"/><path d="M3.2 20v-1.4A4.3 4.3 0 0 1 7.5 14.3h1.6"/><circle cx="16" cy="9.3" r="2.3"/><path d="M13.4 20v-1a3.7 3.7 0 0 1 3.7-3.7h.2A3.7 3.7 0 0 1 21 19v1"/></svg></span>Staking</button>
   <button class="nav-btn" data-tab="games"><span class="ic"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3.5"/><circle class="dot" cx="9" cy="9" r="1.2"/><circle class="dot" cx="12" cy="12" r="1.2"/><circle class="dot" cx="15" cy="15" r="1.2"/></svg></span>Games</button>
 </div></nav>
 
@@ -425,7 +432,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.6.0';
+const APP_VERSION='0.7.0';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -465,7 +472,7 @@ function genKey(){try{if(crypto.randomUUID)return crypto.randomUUID();}catch(_){
 function cacheState(){
   try{localStorage.setItem(CACHE_KEY,JSON.stringify({uid:account&&account.auth_user_id,account,bootstrap:{
     today:state.today,games:state.games,active_trip:state.active_trip,
-    active_trip_totals:state.active_trip_totals,sessions:state.sessions},ts:Date.now()}));}catch(_){}
+    active_trip_totals:state.active_trip_totals,sessions:state.sessions,stakes:state.stakes},ts:Date.now()}));}catch(_){}
 }
 function readCache(){try{const s=localStorage.getItem(CACHE_KEY);return s?JSON.parse(s):null;}catch(_){return null;}}
 
@@ -473,7 +480,7 @@ function readCache(){try{const s=localStorage.getItem(CACHE_KEY);return s?JSON.p
 let account=null;
 let userEmail=null;
 let booted=false;
-let state={today:todayLocal(),games:[],active_trip:null,active_trip_totals:null,sessions:[]};
+let state={today:todayLocal(),games:[],active_trip:null,active_trip_totals:null,sessions:[],stakes:[]};
 let currentTab='today';
 let lastJackpots=[];
 let statsData=null;
@@ -493,6 +500,18 @@ function signMoney(n){n=num(n);return (n>0?'+':n<0?'-':'')+'$'+Math.abs(n).toLoc
 function netClass(n){return num(n)>0?'win':num(n)<0?'loss':'';}
 function fmtMult(m){return m==null?'—':(num(m).toFixed(num(m)>=100?0:1)+'×');}
 function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+
+// Casinos for the picker. Add more here (via Claude Code) — no in-app "add casino" by design.
+const CASINOS=["Harrah's Northern California","Sky River","Jackson Rancheria","Cache Creek",
+  "Thunder Valley","Hard Rock Sacramento","Atlantis","GSR"];
+// Build a <select> of casinos. Any existing off-list value (e.g. a legacy free-text casino)
+// is kept as a selectable option so editing an old record never silently drops it.
+function casinoSelect(id,selected){
+  const sel=selected||'';
+  const list=(sel&&!CASINOS.includes(sel))?[sel,...CASINOS]:CASINOS;
+  return `<select id="${id}"><option value=""${sel?'':' selected'}>— Select casino —</option>`+
+    list.map(c=>`<option value="${esc(c)}"${c===sel?' selected':''}>${esc(c)}</option>`).join('')+`</select>`;
+}
 function catIcon(c){return {slot:'🎰',video_poker:'🃏',bubble_craps:'🎲',table:'♠️',other:'✨'}[c]||'✨';}
 function catLabel(c){return {slot:'Slot',video_poker:'Video Poker',bubble_craps:'Bubble Craps',table:'Table',other:'Other'}[c]||'Other';}
 function isSlotty(c){return c==='slot'||c==='video_poker';} // has denom/base-bet + bonus tracker
@@ -640,7 +659,7 @@ async function doSignOut(){
   try{await sb.auth.signOut();}catch(_){}
   try{localStorage.removeItem(CACHE_KEY);}catch(_){}
   account=null;booted=false;userEmail=null;
-  state={today:todayLocal(),games:[],active_trip:null,active_trip_totals:null,sessions:[]};
+  state={today:todayLocal(),games:[],active_trip:null,active_trip_totals:null,sessions:[],stakes:[]};
   $('app').classList.remove('show');
   showAuthScreen('login');
 }
@@ -678,6 +697,7 @@ function setTab(tab){
   if(tab==='history')loadHistory();
   if(tab==='stats')loadStats();
   if(tab==='bankroll')renderBankroll();
+  if(tab==='staking')renderStaking();
   if(tab==='games')renderGames();
 }
 document.querySelectorAll('.nav-btn').forEach(b=>b.addEventListener('click',()=>setTab(b.dataset.tab)));
@@ -861,6 +881,7 @@ function afterWrite(resp){
   closeSheet();
   if(currentTab==='today')renderToday();
   else if(currentTab==='bankroll')renderBankroll();
+  else if(currentTab==='staking')renderStaking();
   else if(currentTab==='games')renderGames();
   else if(currentTab==='history')loadHistory();
   else if(currentTab==='stats')loadStats();
@@ -889,7 +910,7 @@ function openSessionSheet(game){
     <label class="field">Opening buy-in</label>
     <div class="money-input"><span class="dollar">$</span><input id="f-buyin" inputmode="decimal" placeholder="100"></div>
     <label class="field">Casino (optional)</label>
-    <input id="f-casino" placeholder="${esc(state.active_trip?.casino||'e.g. Bellagio')}" value="${esc(state.active_trip?.casino||'')}">
+    ${casinoSelect('f-casino', state.active_trip?.casino||'')}
     <div class="sheet-actions">
       <button class="btn" data-close-sheet>Cancel</button>
       <button class="btn primary" id="f-start">Start session</button>
@@ -931,7 +952,7 @@ function openEditSession(id){
     <div class="seg" id="e-cat">${segMarkup(s.category)}</div>
     <div class="row2"><div><label class="field">Denomination</label><input id="e-denom" inputmode="decimal" value="${s.denom??''}"></div>
       <div><label class="field">Base bet</label><input id="e-bet" inputmode="decimal" value="${s.bet_size??''}"></div></div>
-    <label class="field">Casino</label><input id="e-casino" value="${esc(s.casino||'')}">
+    <label class="field">Casino</label>${casinoSelect('e-casino', s.casino||'')}
     <label class="field">Notes</label><textarea id="e-notes" placeholder="Anything worth remembering…">${esc(s.notes||'')}</textarea>
     ${isOpen(s)?'':`<label class="field">Cash-out</label><div class="money-input"><span class="dollar">$</span><input id="e-cashout" inputmode="decimal" value="${s.cash_out??''}"></div>`}
     ${isSlotty(s.category)?`<label class="field">Bonuses</label>
@@ -1287,7 +1308,7 @@ function renderBankroll(){
       <div class="card"><div style="font-weight:700;margin-bottom:4px;">Start a trip</div>
       <div class="muted" style="font-size:12px;">Set a bankroll and every buy-in/cash-out today counts against it.</div>
       <label class="field">Trip name</label><input id="bk-name" placeholder="Vegas — August">
-      <label class="field">Casino (optional)</label><input id="bk-casino" placeholder="Bellagio">
+      <label class="field">Casino (optional)</label>${casinoSelect('bk-casino','')}
       <label class="field">Starting bankroll</label>
       <div class="money-input"><span class="dollar">$</span><input id="bk-roll" inputmode="decimal" placeholder="1000"></div>
       <button class="btn primary btn-lg" style="margin-top:16px;" id="bk-start">Start trip</button></div>`;
@@ -1297,6 +1318,103 @@ function renderBankroll(){
         start_date:state.today}));
     });
   }
+}
+
+// ── Staking ──────────────────────────────────────────────────────────────────
+// I front a player a stake; later they return some amount. I only ever recover UP TO
+// my stake (never profit off them) and they keep anything above it. So my net is
+// min(0, returned − stake) and the player's own winnings are max(0, returned − stake).
+function stakeCalc(s){
+  const stake=num(s.stake_amount);
+  if(s.returned==null)return {open:true,stake};
+  const ret=num(s.returned);
+  return {open:false,stake,returned:ret,myNet:Math.min(ret,stake)-stake,playerWon:Math.max(0,ret-stake)};
+}
+function renderStaking(){
+  const body=document.getElementById('staking-body');
+  const stakes=(state.stakes||[]).slice();
+  const open=stakes.filter(s=>s.returned==null);
+  const closed=stakes.filter(s=>s.returned!=null);
+  const net=closed.reduce((a,s)=>a+stakeCalc(s).myNet,0);
+  const playersWon=closed.reduce((a,s)=>a+stakeCalc(s).playerWon,0);
+  const outstanding=open.reduce((a,s)=>a+num(s.stake_amount),0);
+  const row=(s)=>{const c=stakeCalc(s);
+    if(c.open)return `<div class="sess-row" data-stake="${s.id}">
+      <div class="sr-main"><div class="sr-name">🤝 ${esc(s.person)} <span class="cat-chip">out</span></div>
+        <div class="sr-sub">Staked ${money(c.stake)}${s.casino?' · '+esc(s.casino):''}</div></div>
+      <button class="btn" style="flex:0 0 auto;padding:8px 13px;" data-settle="${s.id}">Settle</button></div>`;
+    return `<div class="sess-row" data-stake="${s.id}">
+      <div class="sr-main"><div class="sr-name">🤝 ${esc(s.person)}</div>
+        <div class="sr-sub">${money(c.stake)} → ${money(c.returned)}${c.playerWon>0?` · they kept ${money(c.playerWon)}`:''}</div></div>
+      <div class="sr-net ${netClass(c.myNet)}">${signMoney(c.myNet)}</div></div>`;};
+  body.innerHTML=`
+    <div class="card" style="text-align:center;">
+      <div class="t-label">Staking net</div>
+      <div class="t-val ${netClass(net)}" style="font-size:40px;margin:5px 0;">${signMoney(net)}</div>
+      <div class="tile-grid" style="margin-top:12px;">
+        <div class="tile"><div class="t-label">Out on the table</div><div class="t-val">${money(outstanding)}</div></div>
+        <div class="tile"><div class="t-label">Players kept</div><div class="t-val">${money(playersWon)}</div></div>
+      </div>
+    </div>
+    <button class="btn primary btn-lg" style="margin-top:14px;" id="stk-new">+ New stake</button>
+    ${open.length?`<div class="section-label">Out now</div>${open.map(row).join('')}`:''}
+    ${closed.length?`<div class="section-label">Settled</div>${closed.map(row).join('')}`:''}
+    ${stakes.length?'':'<div class="empty">No stakes yet. Back a player, then record what comes back.</div>'}`;
+  document.getElementById('stk-new').addEventListener('click',()=>openStakeSheet());
+  body.querySelectorAll('[data-settle]').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();
+    openSettleSheet((state.stakes||[]).find(s=>s.id===b.dataset.settle));}));
+  body.querySelectorAll('[data-stake]').forEach(el=>el.addEventListener('click',()=>
+    openStakeSheet((state.stakes||[]).find(s=>s.id===el.dataset.stake))));
+}
+function openStakeSheet(stake){
+  const s=stake||{};const editing=!!stake;const closed=editing&&s.returned!=null;
+  openSheet(editing?'Edit stake':'New stake',`
+    <label class="field">Person</label>
+    <input id="stk-person" placeholder="Who you're staking" value="${esc(s.person||'')}">
+    <label class="field">Casino (optional)</label>${casinoSelect('stk-casino', s.casino||'')}
+    <label class="field">Stake amount</label>
+    <div class="money-input"><span class="dollar">$</span><input id="stk-amt" inputmode="decimal" placeholder="500" value="${s.stake_amount??''}"></div>
+    ${closed?`<label class="field">Returned to you</label>
+      <div class="money-input"><span class="dollar">$</span><input id="stk-ret" inputmode="decimal" value="${s.returned??''}"></div>`:''}
+    <label class="field">Notes</label><textarea id="stk-notes" placeholder="Anything worth remembering…">${esc(s.notes||'')}</textarea>
+    <div class="sheet-actions">
+      ${editing?'<button class="btn danger" id="stk-del">Delete</button>':'<button class="btn" data-close-sheet>Cancel</button>'}
+      <button class="btn primary" id="stk-save">Save</button>
+    </div>`,()=>{
+    document.getElementById('stk-save').addEventListener('click',async()=>{
+      const p={action:'save-stake',person:document.getElementById('stk-person').value.trim(),
+        casino:document.getElementById('stk-casino').value.trim()||null,
+        stake_amount:document.getElementById('stk-amt').value||0,notes:document.getElementById('stk-notes').value};
+      if(editing)p.id=s.id;
+      const rf=document.getElementById('stk-ret');if(rf)p.returned=rf.value;
+      afterWrite(await api('ct-write',p));
+    });
+    if(editing)document.getElementById('stk-del').addEventListener('click',async()=>{
+      if(!await confirmDialog('Delete this stake?',{confirmLabel:'Delete',danger:true}))return;
+      afterWrite(await api('ct-write',{action:'delete-stake',id:s.id}));
+    });
+  });
+}
+function openSettleSheet(stake){
+  const s=stake,st=num(s.stake_amount);
+  openSheet('Settle · '+s.person,`
+    <div class="muted" style="font-size:13px;">You staked <b>${money(st)}</b> to ${esc(s.person)}. Enter what they handed back — you recover up to your stake, they keep the rest.</div>
+    <label class="field">Returned to you</label>
+    <div class="money-input"><span class="dollar">$</span><input id="set-ret" inputmode="decimal" placeholder="${st||'0'}"></div>
+    <div class="mult-preview" id="set-preview" style="margin-top:14px;"></div>
+    <div class="sheet-actions">
+      <button class="btn" data-close-sheet>Cancel</button>
+      <button class="btn primary" id="set-save">Record return</button>
+    </div>`,()=>{
+    const inp=document.getElementById('set-ret'),prev=document.getElementById('set-preview');
+    const upd=()=>{const ret=num(inp.value);const myNet=Math.min(ret,st)-st;const won=Math.max(0,ret-st);
+      prev.innerHTML=`<b style="color:${myNet<0?'var(--loss)':'var(--gold)'}">${signMoney(myNet)}</b>`+
+        `<div style="font-size:12px;color:var(--muted);margin-top:2px;">your net${won>0?` · ${esc(s.person)} keeps ${money(won)}`:''}</div>`;};
+    inp.addEventListener('input',upd);upd();
+    document.getElementById('set-save').addEventListener('click',async()=>{
+      afterWrite(await api('ct-write',{action:'settle-stake',id:s.id,returned:inp.value||0}));
+    });
+  });
 }
 
 // ── Games manager ────────────────────────────────────────────────────────────
@@ -1428,6 +1546,11 @@ function mockSeed(){
       withBuyins(S({game_name:'Blackjack',category:'table',session_date:dayAgo(1),cash_out:80,casino:'Bellagio'}),[200]),
       withBonus(withBuyins(S({game_name:'Buffalo Gold',category:'slot',denom:0.01,bet_size:0.75,session_date:dayAgo(2),cash_out:40,casino:'Aria'}),[150]),[{amount:120,base_bet:0.75}]),
     ],
+    stakes:[
+      {id:'k1',account_id:'me',person:'Marcus',casino:'Thunder Valley',stake_amount:500,returned:700,notes:null,started_at:dayAgo(3)+'T18:00:00',ended_at:dayAgo(3)+'T23:00:00'},
+      {id:'k2',account_id:'me',person:'Dana',casino:'Sky River',stake_amount:300,returned:180,notes:null,started_at:dayAgo(1)+'T19:00:00',ended_at:dayAgo(1)+'T22:00:00'},
+      {id:'k3',account_id:'me',person:'Lee',casino:'Cache Creek',stake_amount:400,returned:null,notes:null,started_at:todayLocal()+'T12:00:00',ended_at:null},
+    ],
   };
 }
 function mockBootstrap(today){
@@ -1440,7 +1563,7 @@ function mockBootstrap(today){
     const ts=mockDB.sessions.filter(s=>!st||(s.started_at||'')>=st);
     const buyins=ts.reduce((x,s)=>x+num(s.buy_in_total),0),cashouts=ts.reduce((x,s)=>x+num(s.cash_out),0);
     active_trip_totals={buyins,cashouts,net:cashouts-buyins,remaining:num(active_trip.starting_bankroll)-buyins+cashouts};}
-  return {today,games,active_trip,active_trip_totals,sessions};
+  return {today,games,active_trip,active_trip_totals,sessions,stakes:(mockDB.stakes||[]).slice()};
 }
 function mockRecompute(s){s.buy_in_total=s.buyins.reduce((x,b)=>x+num(b.amount),0);}
 function mockId(p){return p+Math.random().toString(36).slice(2,8);}
@@ -1487,6 +1610,13 @@ function mockWrite(b){
   else if(a==='save-trip'){if(b.id){const t=mockDB.trips.find(x=>x.id===b.id);if(t)Object.assign(t,{name:b.name,casino:b.casino,starting_bankroll:num(b.starting_bankroll)});}
     else mockDB.trips.push({id:mockId('t'),name:b.name,casino:b.casino,starting_bankroll:num(b.starting_bankroll),start_date:b.start_date||todayLocal(),started_at:new Date().toISOString(),ended_at:null});}
   else if(a==='close-trip'){const t=mockDB.trips.find(x=>x.id===b.id);if(t)t.ended_at=new Date().toISOString();}
+  else if(a==='save-stake'){const f={person:(b.person||'').trim()||'Player',casino:b.casino||null,stake_amount:b.stake_amount?num(b.stake_amount):0,notes:b.notes??null};
+    if(b.id){const k=(mockDB.stakes||[]).find(x=>x.id===b.id);if(k){Object.assign(k,f);if('returned' in b){k.returned=(b.returned===''||b.returned==null)?null:num(b.returned);k.ended_at=k.returned==null?null:new Date().toISOString();}}}
+    else{const k={id:mockId('k'),account_id:'me',...f,returned:null,started_at:new Date().toISOString(),ended_at:null};
+      if('returned' in b&&b.returned!==''&&b.returned!=null){k.returned=num(b.returned);k.ended_at=new Date().toISOString();}
+      (mockDB.stakes=mockDB.stakes||[]).push(k);}}
+  else if(a==='settle-stake'){const k=(mockDB.stakes||[]).find(x=>x.id===b.id);if(k){k.returned=num(b.returned);k.ended_at=new Date().toISOString();}}
+  else if(a==='delete-stake'){mockDB.stakes=(mockDB.stakes||[]).filter(x=>x.id!==b.id);}
 }
 function mockStats(){
   const sessions=mockDB.sessions;const closed=sessions.filter(s=>s.cash_out!=null);
