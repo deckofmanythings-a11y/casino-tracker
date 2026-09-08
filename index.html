@@ -436,7 +436,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.7.1';
+const APP_VERSION='0.7.2';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -637,7 +637,6 @@ $('auth-reconnect').addEventListener('click',()=>location.reload());
 async function onSignedIn(session){
   if(booted)return;
   userEmail=(session&&session.user&&session.user.email)||userEmail;
-  state.today=todayLocal();
   const uid=session&&session.user&&session.user.id;
   const cached=readCache();
   // Only paint from cache when it belongs to THIS user (never flash another user's data).
@@ -645,6 +644,11 @@ async function onSignedIn(session){
     try{account=cached.account;applyBootstrap(cached.bootstrap);hideAuthScreen();hideSplash();$('app').classList.add('show');setTab(currentTab||'today');}catch(_){}
   }
   if(!account){try{localStorage.removeItem(CACHE_KEY);}catch(_){}showSplash('Loading your tracker…');}
+  // Recompute the local date AFTER any cache paint. The cached bootstrap carries the
+  // date it was saved on, and applyBootstrap above just overwrote state.today with it —
+  // without this, the whoami request would ask for that stale date and the Today tab
+  // would stay stuck on it every refresh (it re-caches the stale date, so it loops).
+  state.today=todayLocal();
   const data=await callFnT('ct-whoami',{today:state.today});
   if(data&&data.ok&&data.account){boot(data.account,data.bootstrap);}
   else if(!account){showSplash((data&&data.message)||'Couldn’t load your data.');$('auth-reconnect').style.display='block';}
