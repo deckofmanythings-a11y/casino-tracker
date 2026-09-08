@@ -436,7 +436,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.7.2';
+const APP_VERSION='0.7.3';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -763,14 +763,17 @@ function renderToday(){
     else openSessionSheet(games.find(g=>g.id===el.dataset.game));
   }));
 
+  // Most-recent first (sessions arrive started_at ascending from the server).
+  const byNewest=(a,b)=>String(b.started_at||'').localeCompare(String(a.started_at||''));
+
   // Active session cards
   const activeWrap=document.getElementById('active-sessions');
-  const open=sessions.filter(isOpen);
+  const open=sessions.filter(isOpen).slice().sort(byNewest);
   activeWrap.innerHTML=open.map(renderActiveCard).join('');
   bindActiveCards();
 
   // Closed sessions
-  const closed=sessions.filter(s=>!isOpen(s));
+  const closed=sessions.filter(s=>!isOpen(s)).slice().sort(byNewest);
   const list=document.getElementById('today-sessions');
   if(closed.length===0&&open.length===0){list.innerHTML='<div class="empty">No sessions yet today.<br>Tap a game above to start one.</div>';}
   else if(closed.length===0){list.innerHTML='<div class="empty">No closed sessions yet today.</div>';}
