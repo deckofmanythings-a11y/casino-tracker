@@ -324,6 +324,10 @@
   #reload-pill{background:#fbe9e7;border:1px solid var(--loss);color:#8a241f;}
   #reload-pill b{color:#8a241f;}
   #mock-flag{color:#2a1c04;}
+  /* Tappable W-2G flag on each bonus row: filled gold when on, subtle outline when off. */
+  .jp-toggle{font-size:9px;font-weight:800;letter-spacing:.5px;padding:2px 6px;border-radius:5px;text-transform:uppercase;
+    cursor:pointer;user-select:none;border:1px solid var(--gold-dim);color:var(--gold-dim);background:transparent;opacity:.55;}
+  .jp-toggle.on{background:var(--gold);color:#241c00;border-color:var(--gold);opacity:1;}
 </style>
 </head>
 <body>
@@ -432,7 +436,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.7.0';
+const APP_VERSION='0.7.1';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -796,7 +800,7 @@ function bonusRow(b){
   return `<div class="bonus-row">
     <span class="b-mult">${fmtMult(b.multiple)}</span>
     <span class="b-amt">${money(b.amount)}</span>
-    ${b.is_jackpot?'<span class="jackpot-badge">W-2G</span>':''}
+    <span class="jp-toggle${b.is_jackpot?' on':''}" data-jptoggle="${b.id}" data-jpval="${b.is_jackpot?'0':'1'}" title="Tap to mark/unmark a W-2G hand pay">W-2G</span>
     <span class="b-x" data-delbonus="${b.id}">×</span>
   </div>`;
 }
@@ -818,6 +822,9 @@ function bindActiveCards(){
   w.querySelectorAll('[data-edit]').forEach(b=>b.addEventListener('click',()=>openEditSession(b.dataset.edit)));
   w.querySelectorAll('[data-delbonus]').forEach(b=>b.addEventListener('click',async()=>{
     const r=await api('ct-write',{action:'delete-bonus',id:b.dataset.delbonus});afterWrite(r);}));
+  w.querySelectorAll('[data-jptoggle]').forEach(el=>el.addEventListener('click',async()=>{
+    const r=await api('ct-write',{action:'set-bonus-jackpot',id:el.dataset.jptoggle,is_jackpot:el.dataset.jpval==='1'});
+    if(r&&r.ok){applyBootstrap(r.bootstrap);cacheState();renderToday();}}));
 }
 function findSession(id){return (state.sessions||[]).find(s=>s.id===id);}
 
@@ -981,6 +988,11 @@ function openEditSession(id){
           const r=await api('ct-write',{action:'delete-bonus',id:b.dataset.delbonus});
           if(r&&r.ok){s.ct_bonuses=(s.ct_bonuses||[]).filter(x=>x.id!==b.dataset.delbonus);applyBootstrap(r.bootstrap);cacheState();renderB();}
         }));
+        wrap.querySelectorAll('[data-jptoggle]').forEach(el=>el.addEventListener('click',async()=>{
+          const id=el.dataset.jptoggle,val=el.dataset.jpval==='1';
+          const r=await api('ct-write',{action:'set-bonus-jackpot',id,is_jackpot:val});
+          if(r&&r.ok){const bx=(s.ct_bonuses||[]).find(x=>x.id===id);if(bx)bx.is_jackpot=val;applyBootstrap(r.bootstrap);cacheState();renderB();}
+        }));
       };
       renderB();
       document.getElementById('e-addbonus').addEventListener('click',()=>openBonusSheet(s.id));
@@ -1033,7 +1045,7 @@ function openBonusSheet(sessionId){
     <label class="field">Base bet at hit</label>
     <div class="money-input"><span class="dollar">$</span><input id="bo-bet" inputmode="decimal" value="${baseBet}" placeholder="2.50"></div>
     <div class="mult-preview">Multiple of base bet<b id="bo-mult">—</b></div>
-    <div class="toggle-row"><div class="tr-label">W-2G jackpot (hand pay ≥ $1,200)</div>
+    <div class="toggle-row"><div class="tr-label">W-2G hand pay (paperwork)</div>
       <div class="switch" id="bo-jp"></div></div>
     <div class="sheet-actions"><button class="btn" data-close-sheet>Cancel</button>
       <button class="btn primary" id="bo-add">Log bonus</button></div>
@@ -1045,7 +1057,7 @@ function openBonusSheet(sessionId){
     function recalc(){
       const a=num(amt.value),b=num(bet.value);
       mult.textContent=(a&&b)?(a/b).toFixed(1)+'×':'—';
-      if(!jpManual)jp.classList.toggle('on',a>=1200);
+      if(!jpManual)jp.classList.toggle('on',a>=2000);
     }
     amt.addEventListener('input',recalc);bet.addEventListener('input',recalc);
     jp.addEventListener('click',()=>{jpManual=true;jp.classList.toggle('on');});
@@ -1243,7 +1255,7 @@ function renderStatsBody(){
     ${board}
     ${st.by_game.length?`<div class="section-label">Net by game</div><div class="card">${st.by_game.map(g=>bar(g,maxAbs)).join('')}</div>`:''}
     ${st.by_casino.length>0?`<div class="section-label">Net by casino</div><div class="card">${st.by_casino.map(g=>bar(g,casMax)).join('')}</div>`:''}
-    ${st.jackpots.length?`<div class="section-label">W-2G jackpots (≥ $1,200)</div>
+    ${st.jackpots.length?`<div class="section-label">W-2G hand pays</div>
       <button class="btn" style="margin-bottom:8px;" data-copy-jackpots>Copy list for taxes</button>
       ${st.jackpots.map(jpRow).join('')}`:''}
   `;
@@ -1348,13 +1360,10 @@ function renderStaking(){
         <div class="sr-sub">${money(c.stake)} → ${money(c.returned)}${c.playerWon>0?` · they kept ${money(c.playerWon)}`:''}</div></div>
       <div class="sr-net ${netClass(c.myNet)}">${signMoney(c.myNet)}</div></div>`;};
   body.innerHTML=`
-    <div class="card" style="text-align:center;">
-      <div class="t-label">Staking net</div>
-      <div class="t-val ${netClass(net)}" style="font-size:40px;margin:5px 0;">${signMoney(net)}</div>
-      <div class="tile-grid" style="margin-top:12px;">
-        <div class="tile"><div class="t-label">Out on the table</div><div class="t-val">${money(outstanding)}</div></div>
-        <div class="tile"><div class="t-label">Players kept</div><div class="t-val">${money(playersWon)}</div></div>
-      </div>
+    <div class="card" style="display:flex;gap:10px;text-align:center;">
+      <div style="flex:1;"><div class="t-label">Out now</div><div class="t-val" style="font-size:20px;">${money(outstanding)}</div></div>
+      <div style="flex:1;"><div class="t-label">My net</div><div class="t-val ${netClass(net)}" style="font-size:20px;">${signMoney(net)}</div></div>
+      <div style="flex:1;"><div class="t-label">They kept</div><div class="t-val" style="font-size:20px;">${money(playersWon)}</div></div>
     </div>
     <button class="btn primary btn-lg" style="margin-top:14px;" id="stk-new">+ New stake</button>
     ${open.length?`<div class="section-label">Out now</div>${open.map(row).join('')}`:''}
@@ -1527,7 +1536,7 @@ function mockSeed(){
   let sid=0;const S=(o)=>({id:'s'+(++sid),account_id:'me',trip_id:'t1',game_id:null,notes:null,started_at:o.session_date+'T12:00:00',
     buyins:[],bonuses:[],denom:null,bet_size:null,casino:'Bellagio',cash_out:null,...o});
   const withBuyins=(s,amts)=>{s.buyins=amts.map((a,i)=>({id:s.id+'b'+i,session_id:s.id,amount:a}));s.buy_in_total=amts.reduce((x,y)=>x+y,0);return s;};
-  const withBonus=(s,list)=>{s.bonuses=list.map((b,i)=>({id:s.id+'x'+i,session_id:s.id,amount:b.amount,base_bet:b.base_bet,multiple:b.base_bet?b.amount/b.base_bet:null,is_jackpot:b.amount>=1200,machine_name:s.game_name}));return s;};
+  const withBonus=(s,list)=>{s.bonuses=list.map((b,i)=>({id:s.id+'x'+i,session_id:s.id,amount:b.amount,base_bet:b.base_bet,multiple:b.base_bet?b.amount/b.base_bet:null,is_jackpot:b.amount>=2000,machine_name:s.game_name}));return s;};
   mockDB={
     account:{id:'me',discord_username:'You (demo)',session_token:'mock'},
     games:[
@@ -1602,6 +1611,7 @@ function mockWrite(b){
   else if(a==='add-bonus'){const s=find(b.session_id);if(s){const bb=b.base_bet?num(b.base_bet):num(s.bet_size);
     s.bonuses.push({id:mockId('x'),session_id:s.id,amount:num(b.amount),base_bet:bb||null,multiple:bb?num(b.amount)/bb:null,is_jackpot:!!b.is_jackpot,machine_name:b.machine_name||s.game_name});}}
   else if(a==='delete-bonus'){mockDB.sessions.forEach(s=>s.bonuses=s.bonuses.filter(x=>x.id!==b.id));}
+  else if(a==='set-bonus-jackpot'){mockDB.sessions.forEach(s=>{const bx=s.bonuses.find(x=>x.id===b.id);if(bx)bx.is_jackpot=!!b.is_jackpot;});}
   else if(a==='save-game'){const img=('image_url' in b)?(b.image_url||null):undefined;
     if(b.id){const g=mockDB.games.find(x=>x.id===b.id);if(g){Object.assign(g,{name:b.name,category:b.category,default_denom:b.default_denom?num(b.default_denom):null,default_bet:b.default_bet?num(b.default_bet):null});if(img!==undefined)g.image_url=img;}}
     else mockDB.games.push({id:mockId('g'),name:b.name,category:b.category,default_denom:b.default_denom?num(b.default_denom):null,default_bet:b.default_bet?num(b.default_bet):null,image_url:img||null,sort_order:mockDB.games.length,archived:false});}
