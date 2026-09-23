@@ -65,9 +65,9 @@
   .trip-banner .tb-sub b{color:var(--text);font-weight:600;}
 
   /* ── Fast select ────────────────────────────────────────── */
-  /* Wrapping grid instead of a horizontal-scroll strip: every favorite is visible
-     and tappable with no scrolling (which was awkward on both desktop and touch). */
-  .fast-select{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:9px;padding:14px 2px 4px;}
+  /* Container is a plain block; the category row and the expanded games each lay out
+     their own wrapping grid inside it. */
+  .fast-select{display:block;}
   .fast-chip{min-width:0;overflow:hidden;background:var(--panel);border:1px solid var(--border);
     border-radius:14px;padding:11px 13px;cursor:pointer;transition:transform .06s,border-color .15s;}
   .fast-chip:active{transform:scale(.96);}
@@ -80,6 +80,19 @@
     background:var(--panel2);min-height:100%;}
   .fast-chip.more .mc-plus{font-size:17px;font-weight:800;color:var(--gold);letter-spacing:-.5px;}
   .fast-chip.more .mc-label{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.6px;}
+  /* Category-first fast select: a row of category tiles that expand into their games. */
+  .cat-row{display:grid;grid-template-columns:repeat(auto-fill,minmax(98px,1fr));gap:8px;padding:14px 2px 2px;}
+  .cat-tile{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
+    min-height:66px;padding:10px 6px;border-radius:14px;cursor:pointer;transition:transform .06s;color:var(--text);}
+  .cat-tile:active{transform:scale(.96);}
+  .cat-tile .cti{font-size:23px;line-height:1;}
+  .cat-tile .ctl{font-size:11px;font-weight:700;line-height:1.15;text-align:center;}
+  .cat-tile .ctc{position:absolute;top:5px;right:8px;font-size:10px;font-weight:800;color:var(--muted);}
+  .cat-games{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:9px;padding:10px 2px 4px;}
+  .cat-games:empty{padding:0;}
+  .cat-games .fast-chip{animation:tileIn .3s ease both;}
+  @keyframes tileIn{from{opacity:0;transform:translateY(9px) scale(.93);}to{opacity:1;transform:none;}}
+  @media (prefers-reduced-motion:reduce){.cat-games .fast-chip{animation:none;}}
   /* Art tiles: image is shrunk to fit (not cropped); a bottom scrim keeps the name legible. */
   .fast-chip.has-art{position:relative;padding:0;min-height:96px;border-color:var(--border);
     background-size:contain;background-repeat:no-repeat;background-position:center;
@@ -277,9 +290,12 @@
 
   /* Marble-faced surfaces with a gold bevel edge */
   .card,.day-header,.trip-banner,.tile,.sess-row,.game-row,.jp-row,.sheet-panel,.auth-card,
-  .money-block,.bonus-row,.toggle-row{
+  .money-block,.bonus-row,.toggle-row,.cat-tile{
     border:2px solid transparent;
     background:linear-gradient(var(--surf,#f6f2e8),var(--surf,#f6f2e8)) padding-box, var(--edge) border-box;}
+  .cat-tile.open{color:#2a1c04;
+    background:linear-gradient(135deg,#f8e79f,#d8ab44) padding-box, var(--edge) border-box;}
+  .cat-tile.open .ctc{color:#2a1c04;}
   .money-block,.bonus-row,.toggle-row{--surf:#efe8d9;}
   .trip-banner{--surf:#f8f0d6;}
   .card{box-shadow:var(--shadow);}
@@ -429,7 +445,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.7.7';
+const APP_VERSION='0.8.0';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -482,8 +498,7 @@ let currentTab='today';
 let lastJackpots=[];
 let statsData=null;
 let bonusShown=3;
-let favExpanded=false;
-const FAV_CAP=8;
+let openCat=null; // Today tab: which category's games are expanded (null = none)
 
 // ── Formatting helpers ─────────────────────────────────────────────────────
 function todayLocal(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
@@ -510,7 +525,9 @@ function casinoSelect(id,selected){
     list.map(c=>`<option value="${esc(c)}"${c===sel?' selected':''}>${esc(c)}</option>`).join('')+`</select>`;
 }
 function catIcon(c){return {slot:'🎰',video_poker:'🃏',bubble_craps:'🎲',table:'♠️',other:'✨'}[c]||'✨';}
-function catLabel(c){return {slot:'Slot',video_poker:'Video Poker',bubble_craps:'Bubble Craps',table:'Table',other:'Other'}[c]||'Other';}
+function catLabel(c){return {slot:'Slots',video_poker:'Video Poker',bubble_craps:'Table (Other)',table:'Table (Cards)',other:'Other'}[c]||'Other';}
+// Display order for the category row + type pickers.
+const CAT_ORDER=['slot','table','bubble_craps','video_poker','other'];
 function isSlotty(c){return c==='slot'||c==='video_poker';} // has denom/base-bet + bonus tracker
 function usesCents(c){return c==='slot'||c==='video_poker'||c==='bubble_craps';} // cents-first money entry + TITO ticket
 function sessNet(s){return num(s.cash_out)-num(s.buy_in_total);}
@@ -743,22 +760,29 @@ function renderToday(){
   }else tb.innerHTML='';
 
   // Fast select
+  // Category-first fast select: a row of category tiles; tapping one expands into the
+  // quick-select games of that category (which animate in), plus a "+ New" for that type.
   const fs=document.getElementById('fast-select');
   const games=(state.games||[]);
-  const collapsed=!favExpanded&&games.length>FAV_CAP;   // show 7 + a "More" tile past that
-  const shown=collapsed?games.slice(0,FAV_CAP):games;
-  let html=shown.map(favChip).join('');
-  if(collapsed){
-    html+=`<div class="fast-chip more" data-fav="more"><div class="mc-plus">+${games.length-FAV_CAP}</div><div class="mc-label">More</div></div>`;
-  }else{
-    html+=`<div class="fast-chip new" data-game="__new">+ New</div>`;
-    if(favExpanded&&games.length>FAV_CAP)html+=`<div class="fast-chip more" data-fav="less"><div class="mc-label">Show less</div></div>`;
+  const catRow=CAT_ORDER.map(c=>{
+    const n=games.filter(g=>g.category===c).length;
+    return `<div class="cat-tile${openCat===c?' open':''}" data-cat-open="${c}">
+      <div class="cti">${catIcon(c)}</div><div class="ctl">${catLabel(c)}</div>
+      ${n?`<div class="ctc">${n}</div>`:''}</div>`;
+  }).join('');
+  let panel='';
+  if(openCat){
+    const gs=games.filter(g=>g.category===openCat);
+    panel=gs.map(favChip).join('')+
+      `<div class="fast-chip new" data-game="__new" data-newcat="${openCat}">+ New</div>`;
   }
-  fs.innerHTML=html;
+  fs.innerHTML=`<div class="cat-row">${catRow}</div><div class="cat-games" id="cat-games">${panel}</div>`;
   paintArtBgs(fs);
-  fs.querySelectorAll('[data-fav]').forEach(el=>el.addEventListener('click',()=>{favExpanded=el.dataset.fav==='more';renderToday();}));
+  fs.querySelectorAll('#cat-games .fast-chip').forEach((el,i)=>{el.style.animationDelay=(i*34)+'ms';}); // stagger the reveal
+  fs.querySelectorAll('[data-cat-open]').forEach(el=>el.addEventListener('click',()=>{
+    openCat=(openCat===el.dataset.catOpen)?null:el.dataset.catOpen;renderToday();}));
   fs.querySelectorAll('[data-game]').forEach(el=>el.addEventListener('click',()=>{
-    if(el.dataset.game==='__new')openSessionSheet();
+    if(el.dataset.game==='__new')openSessionSheet(el.dataset.newcat?{category:el.dataset.newcat}:undefined);
     else openSessionSheet(games.find(g=>g.id===el.dataset.game));
   }));
 
@@ -901,14 +925,14 @@ function afterWrite(resp){
 }
 
 // Category segmented control markup + wiring.
-function segMarkup(sel){return ['slot','video_poker','bubble_craps','table','other'].map(c=>
+function segMarkup(sel){return CAT_ORDER.map(c=>
   `<button type="button" class="${c===sel?'sel':''}" data-cat="${c}">${catIcon(c)} ${catLabel(c)}</button>`).join('');}
 
 // ── New / edit session ──────────────────────────────────────────────────────
 function openSessionSheet(game){
   const g=game||{};
   const cat=g.category||'slot';
-  openSheet(game?('Start: '+g.name):'New session',`
+  openSheet(g.name?('Start: '+g.name):'New session',`
     <label class="field">Game / machine</label>
     <input id="f-name" placeholder="e.g. Lightning Link" value="${esc(g.name||'')}">
     <label class="field">Type</label>
