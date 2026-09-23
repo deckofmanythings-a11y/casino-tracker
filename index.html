@@ -147,6 +147,26 @@
   .sess-row .sr-sub{font-size:11px;color:var(--muted);margin-top:2px;}
   .sess-row .sr-net{font-size:17px;font-weight:800;text-align:right;white-space:nowrap;}
 
+  /* History accordion: day → collapsed game groups → individual sessions */
+  .hist-day{display:flex;align-items:center;gap:10px;padding:12px 14px;margin-top:9px;border-radius:13px;cursor:pointer;}
+  .hist-day .hd-date{font-weight:800;font-size:15px;}
+  .hist-day .hd-sub{flex:1;font-size:11px;color:var(--muted);}
+  .hist-day .hd-net{font-weight:800;font-size:16px;white-space:nowrap;}
+  .hist-grp{display:flex;align-items:center;gap:9px;padding:10px 12px;margin-top:8px;margin-left:8px;border-radius:12px;cursor:pointer;}
+  .hist-grp .hg-name{min-width:0;font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .hist-grp .hg-badge{flex:0 0 auto;font-size:11px;font-weight:800;color:#2a1c04;background:var(--gold);border-radius:20px;padding:1px 8px;}
+  .hist-grp .hg-net{margin-left:auto;flex:0 0 auto;font-weight:800;font-size:15px;white-space:nowrap;}
+  .chev{flex:0 0 auto;color:var(--gold-dim);font-size:11px;transition:transform .22s ease;}
+  .hist-day.open>.chev,.hist-grp.open>.chev{transform:rotate(90deg);}
+  /* auto-height accordion via animatable grid rows (0fr↔1fr) */
+  .acc{display:grid;grid-template-rows:0fr;transition:grid-template-rows .28s ease;}
+  .acc>.acc-in{overflow:hidden;min-height:0;}
+  .hist-day.open + .hist-day-body{grid-template-rows:1fr;}
+  .hist-grp.open + .hist-grp-body{grid-template-rows:1fr;}
+  .hist-grp-body>.acc-in{padding-left:12px;}
+  .hist-sess.ind{margin-left:8px;}
+  @media (prefers-reduced-motion:reduce){.acc{transition:none;}}
+
   /* Game rows (Games tab) with ▲▼ reorder controls — plain clicks, reliable on
      mobile + desktop inside the Activity iframe (drag/pointer events were not). */
   .game-row{display:flex;align-items:center;gap:8px;background:var(--panel);border:1px solid var(--border);
@@ -290,9 +310,10 @@
 
   /* Marble-faced surfaces with a gold bevel edge */
   .card,.day-header,.trip-banner,.tile,.sess-row,.game-row,.jp-row,.sheet-panel,.auth-card,
-  .money-block,.bonus-row,.toggle-row,.cat-tile{
+  .money-block,.bonus-row,.toggle-row,.cat-tile,.hist-day,.hist-grp{
     border:2px solid transparent;
     background:linear-gradient(var(--surf,#f6f2e8),var(--surf,#f6f2e8)) padding-box, var(--edge) border-box;}
+  .hist-day{--surf:#f4ecd9;}
   .cat-tile.open{color:#2a1c04;
     background:linear-gradient(135deg,#f8e79f,#d8ab44) padding-box, var(--edge) border-box;}
   .cat-tile.open .ctc{color:#2a1c04;}
@@ -445,7 +466,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.8.1';
+const APP_VERSION='0.8.2';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -1268,37 +1289,64 @@ async function uploadGameArt(file){
 }
 
 // ── History ──────────────────────────────────────────────────────────────────
+let historyData=[];
+function fmtTime(iso){if(!iso)return '';const d=new Date(iso);return isNaN(d.getTime())?'':d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});}
+// One session row. `grouped` = shown under a collapsed game group (lead with the time,
+// since the game name is already on the group header); otherwise lead with the game.
+function histSessRow(s,grouped){
+  const net=sessNet(s);const nb=(s.ct_bonuses||[]).length;const open=isOpen(s);
+  const flow=`${money(s.buy_in_total)}${open?'':' → '+money(s.cash_out)}`;
+  const main=grouped
+    ? `<div class="sr-name" style="font-weight:600;">${fmtTime(s.started_at)||'Session'}${open?' <span class="cat-chip">open</span>':''}</div>
+       <div class="sr-sub">${flow}${nb?` · ${nb}✨`:''}</div>`
+    : `<div class="sr-name">${catIcon(s.category)} ${esc(s.game_name)}${open?' <span class="cat-chip">open</span>':''}</div>
+       <div class="sr-sub">${flow}${s.casino?' · '+esc(s.casino):''}${nb?` · ${nb}✨`:''}</div>`;
+  return `<div class="sess-row hist-sess${grouped?' ind':''}" data-hsess="${s.id}">
+    <div class="sr-main">${main}</div>
+    <div class="sr-net ${netClass(net)}">${open?'—':signMoney(net)}</div></div>`;
+}
 async function loadHistory(){
   const body=document.getElementById('history-body');
   body.innerHTML='<div class="empty">Loading…</div>';
   const r=await api('ct-data',{view:'history'});
   if(!r.ok){body.innerHTML='<div class="empty">Could not load history.</div>';return;}
-  const sessions=r.sessions||[];
-  if(sessions.length===0){body.innerHTML='<div class="empty">No sessions logged yet.</div>';return;}
-  const byDay={};
-  sessions.forEach(s=>{(byDay[s.session_date]=byDay[s.session_date]||[]).push(s);});
-  const days=Object.keys(byDay).sort().reverse();
-  body.innerHTML=days.map(d=>{
+  historyData=r.sessions||[];
+  if(!historyData.length){body.innerHTML='<div class="empty">No sessions logged yet.</div>';return;}
+  const byDay={};const dayOrder=[];
+  historyData.forEach(s=>{if(!byDay[s.session_date]){byDay[s.session_date]=[];dayOrder.push(s.session_date);}byDay[s.session_date].push(s);});
+  dayOrder.sort().reverse();
+  let html='';
+  dayOrder.forEach((d,di)=>{
     const list=byDay[d];
     const net=list.reduce((x,s)=>x+sessNet(s),0);
-    return `<div class="section-label" style="display:flex;justify-content:space-between;">
-        <span>${prettyDate(d)}</span><span class="${netClass(net)}">${signMoney(net)}</span></div>
-      ${list.map(sessRowHist).join('')}`;
-  }).join('');
-  body.querySelectorAll('[data-hsess]').forEach(el=>el.addEventListener('click',()=>{
-    // Ensure the session is in state for the edit sheet, then open it.
-    const s=sessions.find(x=>x.id===el.dataset.hsess);
+    // Collapse runs of the same game+casino into one expandable group.
+    const groups={};const gOrder=[];
+    list.forEach(s=>{const k=(s.game_name||'')+'|'+(s.casino||'');if(!groups[k]){groups[k]=[];gOrder.push(k);}groups[k].push(s);});
+    let inner='';
+    gOrder.forEach(k=>{
+      const gs=groups[k];
+      if(gs.length===1){inner+=histSessRow(gs[0],false);return;}
+      const s0=gs[0];const gnet=gs.reduce((x,s)=>x+sessNet(s),0);
+      inner+=`<div class="hist-grp"><span class="chev">▸</span>
+        <span class="hg-name">${catIcon(s0.category)} ${esc(s0.game_name)}${s0.casino?' · '+esc(s0.casino):''}</span>
+        <span class="hg-badge">×${gs.length}</span>
+        <span class="hg-net ${netClass(gnet)}">${signMoney(gnet)}</span></div>
+        <div class="acc hist-grp-body"><div class="acc-in">${gs.map(s=>histSessRow(s,true)).join('')}</div></div>`;
+    });
+    const dOpen=di===0; // most-recent day open by default
+    html+=`<div class="hist-day${dOpen?' open':''}"><span class="chev">▸</span>
+      <span class="hd-date">${prettyDate(d)}</span>
+      <span class="hd-sub">${list.length} session${list.length===1?'':'s'}</span>
+      <span class="hd-net ${netClass(net)}">${signMoney(net)}</span></div>
+      <div class="acc hist-day-body"><div class="acc-in">${inner}</div></div>`;
+  });
+  body.innerHTML=html;
+  body.querySelectorAll('.hist-day').forEach(el=>el.addEventListener('click',()=>el.classList.toggle('open')));
+  body.querySelectorAll('.hist-grp').forEach(el=>el.addEventListener('click',()=>el.classList.toggle('open')));
+  body.querySelectorAll('[data-hsess]').forEach(el=>el.addEventListener('click',e=>{e.stopPropagation();
+    const s=historyData.find(x=>x.id===el.dataset.hsess);
     if(s&&!findSession(s.id))state.sessions=[...state.sessions,s];
-    openEditSession(el.dataset.hsess);
-  }));
-}
-function sessRowHist(s){
-  const net=sessNet(s);const nb=(s.ct_bonuses||[]).length;const open=isOpen(s);
-  return `<div class="sess-row" data-hsess="${s.id}">
-    <div class="sr-main"><div class="sr-name">${catIcon(s.category)} ${esc(s.game_name)}${open?' <span class="cat-chip">open</span>':''}</div>
-      <div class="sr-sub">${money(s.buy_in_total)}${open?'':' → '+money(s.cash_out)}${s.casino?' · '+esc(s.casino):''}${nb?` · ${nb}✨`:''}</div></div>
-    <div class="sr-net ${netClass(net)}">${open?'—':signMoney(net)}</div>
-  </div>`;
+    openEditSession(el.dataset.hsess);}));
 }
 
 // ── Stats ────────────────────────────────────────────────────────────────────
