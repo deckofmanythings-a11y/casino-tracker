@@ -429,7 +429,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.7.4';
+const APP_VERSION='0.7.5';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -488,12 +488,12 @@ const FAV_CAP=8;
 // ── Formatting helpers ─────────────────────────────────────────────────────
 function todayLocal(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
 function num(v){return Number(v||0);}
+// Always show cents (two decimal places) on every dollar amount.
 function money(n){
-  n=num(n);const neg=n<0;const abs=Math.abs(n);
-  const s=abs%1===0?abs.toLocaleString('en-US'):abs.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
-  return (neg?'-$':'$')+s;
+  n=num(n);const neg=n<0;
+  return (neg?'-$':'$')+Math.abs(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
 }
-function signMoney(n){n=num(n);return (n>0?'+':n<0?'-':'')+'$'+Math.abs(n).toLocaleString('en-US',{maximumFractionDigits:2});}
+function signMoney(n){n=num(n);return (n>0?'+':n<0?'-':'')+'$'+Math.abs(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});}
 function netClass(n){return num(n)>0?'win':num(n)<0?'loss':'';}
 function fmtMult(m){return m==null?'—':(num(m).toFixed(num(m)>=100?0:1)+'×');}
 function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
