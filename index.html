@@ -466,7 +466,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.8.3';
+const APP_VERSION='0.8.4';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -551,6 +551,8 @@ function catLabel(c){return {slot:'Slots',video_poker:'Video Poker',bubble_craps
 const CAT_ORDER=['slot','table','bubble_craps','video_poker'];
 // A game's displayed title: "Core — Variant" (or just Core). Matches the server's combine.
 function gameDisplay(g){return g&&g.variant?`${g.name} — ${g.variant}`:(g?g.name||'':'');}
+// Split a combined "Core — Variant" title back into [core, variant].
+function splitGameName(gn){const i=(gn||'').indexOf(' — ');return i<0?[gn||'','']:[gn.slice(0,i),gn.slice(i+3)];}
 function isSlotty(c){return c==='slot'||c==='video_poker';} // has denom/base-bet + bonus tracker
 function usesCents(c){return c==='slot'||c==='video_poker'||c==='bubble_craps';} // cents-first money entry + TITO ticket
 function sessNet(s){return num(s.cash_out)-num(s.buy_in_total);}
@@ -891,7 +893,21 @@ function openSheet(title,html,onMount){
   if(onMount)onMount();
 }
 function closeSheet(){document.getElementById('sheet').classList.remove('show');}
-document.getElementById('sheet').addEventListener('click',e=>{if(e.target.id==='sheet')closeSheet();});
+// Tap-outside to dismiss, but only when the press BEGAN on the backdrop. Without this,
+// selecting text in a field (or any drag) that happens to end on the dim area, or a
+// stray release outside, would close the sheet and lose a half-filled form.
+(function(){
+  const el=document.getElementById('sheet');let downOnBackdrop=false;
+  el.addEventListener('pointerdown',e=>{downOnBackdrop=(e.target===el);});
+  el.addEventListener('click',e=>{if(e.target===el&&downOnBackdrop)closeSheet();downOnBackdrop=false;});
+})();
+// Backspace outside a text field navigates the browser back in some webviews, which
+// yanks the whole app out from under an open dialog. Swallow it unless a field is focused.
+window.addEventListener('keydown',e=>{
+  if(e.key!=='Backspace')return;
+  const t=e.target,tag=t&&t.tagName;
+  if(!(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT'||(t&&t.isContentEditable)))e.preventDefault();
+},true);
 
 // Delegated clicks for buttons that live in HTML strings / static markup. Inline
 // onclick="" handlers are blocked in the sandboxed Activity iframe, so everything
@@ -1004,9 +1020,12 @@ function openSessionSheet(game){
 
 function openEditSession(id){
   const s=findSession(id);if(!s)return;
+  const [eCore,eVariant]=splitGameName(s.game_name);
   openSheet('Edit session',`
-    <label class="field">Game / machine</label>
-    <input id="e-name" value="${esc(s.game_name)}">
+    <label class="field">Name / Core game</label>
+    <input id="e-name" value="${esc(eCore)}">
+    <label class="field">Variant (optional)</label>
+    <input id="e-variant" value="${esc(eVariant)}">
     <label class="field">Type</label>
     <div class="seg" id="e-cat">${segMarkup(s.category)}</div>
     <div class="row2"><div><label class="field">Denomination</label><input id="e-denom" inputmode="decimal" value="${s.denom??''}"></div>
@@ -1053,7 +1072,8 @@ function openEditSession(id){
       selCat=b.dataset.cat;document.querySelectorAll('#e-cat button').forEach(x=>x.classList.toggle('sel',x===b));
       applyCents(document.getElementById('e-cashout'),usesCents(selCat));}));
     document.getElementById('e-save').addEventListener('click',async()=>{
-      const p={action:'save-session',id:s.id,game_name:document.getElementById('e-name').value.trim(),
+      const _nm=document.getElementById('e-name').value.trim(),_vr=document.getElementById('e-variant').value.trim();
+      const p={action:'save-session',id:s.id,game_name:_vr?`${_nm} — ${_vr}`:_nm,
         category:selCat,denom:document.getElementById('e-denom').value,bet_size:document.getElementById('e-bet').value,
         casino:document.getElementById('e-casino').value.trim()||null,notes:document.getElementById('e-notes').value};
       const co=document.getElementById('e-cashout');if(co)p.cash_out=co.value;
