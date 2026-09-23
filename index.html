@@ -445,7 +445,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.8.0';
+const APP_VERSION='0.8.1';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -526,8 +526,8 @@ function casinoSelect(id,selected){
 }
 function catIcon(c){return {slot:'🎰',video_poker:'🃏',bubble_craps:'🎲',table:'♠️',other:'✨'}[c]||'✨';}
 function catLabel(c){return {slot:'Slots',video_poker:'Video Poker',bubble_craps:'Table (Other)',table:'Table (Cards)',other:'Other'}[c]||'Other';}
-// Display order for the category row + type pickers.
-const CAT_ORDER=['slot','table','bubble_craps','video_poker','other'];
+// Display order for the category row + type pickers. ("Other" was folded into Table (Other).)
+const CAT_ORDER=['slot','table','bubble_craps','video_poker'];
 function isSlotty(c){return c==='slot'||c==='video_poker';} // has denom/base-bet + bonus tracker
 function usesCents(c){return c==='slot'||c==='video_poker'||c==='bubble_craps';} // cents-first money entry + TITO ticket
 function sessNet(s){return num(s.cash_out)-num(s.buy_in_total);}
