@@ -466,7 +466,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.8.4';
+const APP_VERSION='0.8.5';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -553,6 +553,19 @@ const CAT_ORDER=['slot','table','bubble_craps','video_poker'];
 function gameDisplay(g){return g&&g.variant?`${g.name} — ${g.variant}`:(g?g.name||'':'');}
 // Split a combined "Core — Variant" title back into [core, variant].
 function splitGameName(gn){const i=(gn||'').indexOf(' — ');return i<0?[gn||'','']:[gn.slice(0,i),gn.slice(i+3)];}
+// Distinct core names + variants the user has used (catalog + today + loaded history),
+// to power the typable dropdowns (datalists) on the name/variant fields.
+function gameFieldPools(){
+  const cores=new Set(),variants=new Set();
+  (state.games||[]).forEach(g=>{if(g.name)cores.add(g.name);if(g.variant)variants.add(g.variant);});
+  [...(state.sessions||[]),...(historyData||[])].forEach(s=>{const[c,v]=splitGameName(s.game_name);if(c)cores.add(c);if(v)variants.add(v);});
+  const srt=set=>[...set].sort((a,b)=>a.localeCompare(b));
+  return {cores:srt(cores),variants:srt(variants)};
+}
+function gameDatalists(){const p=gameFieldPools();
+  return `<datalist id="dl-cores">${p.cores.map(c=>`<option value="${esc(c)}"></option>`).join('')}</datalist>`+
+    `<datalist id="dl-variants">${p.variants.map(v=>`<option value="${esc(v)}"></option>`).join('')}</datalist>`;
+}
 function isSlotty(c){return c==='slot'||c==='video_poker';} // has denom/base-bet + bonus tracker
 function usesCents(c){return c==='slot'||c==='video_poker'||c==='bubble_craps';} // cents-first money entry + TITO ticket
 function sessNet(s){return num(s.cash_out)-num(s.buy_in_total);}
@@ -972,8 +985,11 @@ function openSessionSheet(game){
   const g=game||{};
   const cat=g.category||'slot';
   openSheet(g.name?('Start: '+g.name):'New session',`
-    <label class="field">Game / machine</label>
-    <input id="f-name" placeholder="e.g. Lightning Link" value="${esc(gameDisplay(g))}">
+    <label class="field">Name / Core game</label>
+    <input id="f-name" placeholder="e.g. Lightning Link" value="${esc(g.name||'')}" list="dl-cores" autocomplete="off">
+    <label class="field">Variant (optional)</label>
+    <input id="f-variant" placeholder="e.g. Happy &amp; Prosperous" value="${esc(g.variant||'')}" list="dl-variants" autocomplete="off">
+    ${gameDatalists()}
     <label class="field">Type</label>
     <div class="seg" id="f-cat">${segMarkup(cat)}</div>
     <div id="f-slotfields" style="${isSlotty(cat)?'':'display:none'}">
@@ -1005,8 +1021,10 @@ function openSessionSheet(game){
     startBtn.addEventListener('click',async()=>{
       if(startBtn.disabled)return;
       startBtn.disabled=true;startBtn.textContent='Starting…';
+      const _fnm=document.getElementById('f-name').value.trim()||g.name||'Untitled';
+      const _fvr=document.getElementById('f-variant').value.trim();
       const payload={action:'save-session',client_key:clientKey,
-        game_id:g.id||null,game_name:document.getElementById('f-name').value.trim()||g.name||'Untitled',
+        game_id:g.id||null,game_name:_fvr?`${_fnm} — ${_fvr}`:_fnm,
         category:selCat,casino:document.getElementById('f-casino').value.trim()||null,
         denom:isSlotty(selCat)?document.getElementById('f-denom').value:null,
         bet_size:isSlotty(selCat)?document.getElementById('f-bet').value:null,
@@ -1023,9 +1041,10 @@ function openEditSession(id){
   const [eCore,eVariant]=splitGameName(s.game_name);
   openSheet('Edit session',`
     <label class="field">Name / Core game</label>
-    <input id="e-name" value="${esc(eCore)}">
+    <input id="e-name" value="${esc(eCore)}" list="dl-cores" autocomplete="off">
     <label class="field">Variant (optional)</label>
-    <input id="e-variant" value="${esc(eVariant)}">
+    <input id="e-variant" value="${esc(eVariant)}" list="dl-variants" autocomplete="off">
+    ${gameDatalists()}
     <label class="field">Type</label>
     <div class="seg" id="e-cat">${segMarkup(s.category)}</div>
     <div class="row2"><div><label class="field">Denomination</label><input id="e-denom" inputmode="decimal" value="${s.denom??''}"></div>
@@ -1538,8 +1557,9 @@ async function moveGame(id,dir){
 function openGameSheet(game){
   const g=game||{};const cat=g.category||'slot';
   openSheet(game?'Edit game':'Add a game',`
-    <label class="field">Name / Core game</label><input id="g-name" placeholder="Dragon Link" value="${esc(g.name||'')}">
-    <label class="field">Variant (optional)</label><input id="g-variant" placeholder="Happy &amp; Prosperous" value="${esc(g.variant||'')}">
+    <label class="field">Name / Core game</label><input id="g-name" placeholder="Dragon Link" value="${esc(g.name||'')}" list="dl-cores" autocomplete="off">
+    <label class="field">Variant (optional)</label><input id="g-variant" placeholder="Happy &amp; Prosperous" value="${esc(g.variant||'')}" list="dl-variants" autocomplete="off">
+    ${gameDatalists()}
     <label class="field">Type</label><div class="seg" id="g-cat">${segMarkup(cat)}</div>
     <div id="g-slot" style="${isSlotty(cat)?'':'display:none'}"><div class="row2">
       <div><label class="field">Default denom</label><input id="g-denom" inputmode="decimal" value="${g.default_denom??''}"></div>
