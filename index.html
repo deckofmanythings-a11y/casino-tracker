@@ -518,7 +518,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.0';
+const APP_VERSION='0.9.1';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -1642,6 +1642,7 @@ function openCompSheet(comp){
   const dowSel=Array.isArray(c.dow)?c.dow:[];
   const dowLetters=['S','M','T','W','T','F','S'];
   openSheet(editing?'Edit comp':'New comp',`
+    ${editing?'':'<button class="btn" id="c-scan" style="width:100%;">📷 Scan flyer / mailer</button><input type="file" id="c-scan-file" accept="image/*" capture="environment" style="display:none"><div id="c-scan-status" class="muted" style="font-size:12px;min-height:14px;margin-top:4px;"></div>'}
     <label class="field">Person</label>
     <input id="c-person" list="dl-people" autocomplete="off" value="${esc(c.person||'Me')}">
     <datalist id="dl-people">${people.map(p=>`<option value="${esc(p)}"></option>`).join('')}</datalist>
@@ -1667,6 +1668,31 @@ function openCompSheet(comp){
     const single=document.getElementById('c-single');
     single.addEventListener('click',()=>single.classList.toggle('on'));
     document.querySelectorAll('#c-dow .dow-btn').forEach(b=>b.addEventListener('click',()=>b.classList.toggle('sel')));
+    // Scan a flyer/mailer photo -> ct-scan-comp (Claude vision) -> prefill the fields.
+    function prefillComp(cp){
+      if(cp.title)document.getElementById('c-title').value=cp.title;
+      if(cp.casino){const sel=document.getElementById('c-casino');let opt=[...sel.options].find(o=>o.value===cp.casino);if(!opt){opt=new Option(cp.casino,cp.casino);sel.add(opt);}sel.value=cp.casino;}
+      if(cp.valid_from)document.getElementById('c-from').value=cp.valid_from;
+      if(cp.valid_to)document.getElementById('c-to').value=cp.valid_to;
+      if(cp.single_use)single.classList.add('on');
+      if(cp.notes)document.getElementById('c-notes').value=cp.notes;
+      if(Array.isArray(cp.days_of_week))document.querySelectorAll('#c-dow .dow-btn').forEach(b=>b.classList.toggle('sel',cp.days_of_week.includes(Number(b.dataset.dow))));
+    }
+    const scanBtn=document.getElementById('c-scan');
+    if(scanBtn){
+      const fi=document.getElementById('c-scan-file'),st=document.getElementById('c-scan-status');
+      scanBtn.addEventListener('click',()=>fi.click());
+      fi.addEventListener('change',async()=>{
+        const f=fi.files&&fi.files[0];if(!f)return;
+        scanBtn.disabled=true;st.style.color='';st.textContent='Reading flyer…';
+        try{const {data,media_type}=await fileToScaledBase64(f);
+          const r=await api('ct-scan-comp',{image:data,media_type,today:state.today,casinos:CASINOS});
+          if(r&&r.ok&&r.comp){prefillComp(r.comp);st.textContent='Filled in — check it, then Save.';}
+          else st.textContent=(r&&r.message)||'Couldn’t read a comp — enter it manually.';
+        }catch(e){st.textContent='Scan failed — enter it manually.';}
+        finally{scanBtn.disabled=false;fi.value='';}
+      });
+    }
     const saveBtn=document.getElementById('c-save');
     saveBtn.addEventListener('click',async()=>{
       if(saveBtn.disabled)return;
@@ -1948,6 +1974,7 @@ async function mockApi(name,payload){
   }
   if(name==='ct-write'){mockWrite(payload);return {ok:true,bootstrap:mockBootstrap(today)};}
   if(name==='ct-scan-ticket'){await new Promise(r=>setTimeout(r,600));return {ok:true,amount:123.45,raw:'123.45'};}
+  if(name==='ct-scan-comp'){await new Promise(r=>setTimeout(r,700));return {ok:true,comp:{title:'$75 Free Play',casino:'Sky River',valid_from:todayLocal(),valid_to:null,days_of_week:null,single_use:true,notes:'From mailer (demo)'}};}
   return {ok:false,message:'mock: unknown '+name};
 }
 function mockWrite(b){
