@@ -518,7 +518,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.1';
+const APP_VERSION='0.9.2';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -1591,6 +1591,23 @@ function compEligLabel(comp){ // short human summary, e.g. "Tuesdays", "Sep 20�
   if(comp.single_use) parts.push('one-time');
   return parts.join(' · ')||'Any day';
 }
+// Expand a recurring offer into one SINGLE-USE comp per period (a calendar week, or a
+// Fri–Sun weekend) within [from,to], eligible on the given weekdays. Each period is its
+// own one-time comp, consumed independently.
+function isoDate(dt){return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;}
+function periodKey(dt,freq){const wd=dt.getDay();const d=new Date(dt);
+  const back=freq==='weekend'?(wd===5?0:wd===6?1:wd===0?2:0):((wd+6)%7); // weekend->Friday, weekly->Monday
+  d.setDate(d.getDate()-back);return isoDate(d);}
+function expandComps(base,freq,dowSet,from,to){
+  if(!from||!to)return [];
+  const dset=(dowSet&&dowSet.length)?dowSet:(freq==='weekend'?[5,6,0]:[1,2,3,4]);
+  const groups={};let d=new Date(from+'T00:00:00');const end=new Date(to+'T00:00:00');
+  while(d<=end){const wd=d.getDay();
+    if(dset.includes(wd)){const k=periodKey(d,freq);const ds=isoDate(d);
+      if(!groups[k])groups[k]={min:ds,max:ds};else{if(ds<groups[k].min)groups[k].min=ds;if(ds>groups[k].max)groups[k].max=ds;}}
+    d.setDate(d.getDate()+1);}
+  return Object.keys(groups).sort().map(k=>({...base,single_use:true,valid_from:groups[k].min,valid_to:groups[k].max,dow:dset}));
+}
 // Distinct comp persons, "Me" surfaced first.
 function compPersons(list){
   const seen=[];(list||state.comps||[]).forEach(c=>{const p=c.person||'—';if(!seen.includes(p))seen.push(p);});
@@ -1650,8 +1667,10 @@ function openCompSheet(comp){
     <input id="c-title" placeholder="e.g. $50 Free Play" value="${esc(c.title||'')}">
     <label class="field">Casino</label>
     ${casinoSelect('c-casino', c.casino||'')}
-    <div class="toggle-row"><div class="tr-label">Single use (one-time only)</div>
-      <div class="switch${c.single_use?' on':''}" id="c-single"></div></div>
+    ${editing?`<div class="toggle-row"><div class="tr-label">Single use (consumed when redeemed)</div><div class="switch${c.single_use?' on':''}" id="c-single"></div></div>`:`<label class="field">Redeem</label>
+    <div class="seg" id="c-freq"><button type="button" class="sel" data-freq="once">One-time</button><button type="button" data-freq="weekly">Once / week</button><button type="button" data-freq="weekend">Once / weekend</button></div>
+    <div class="toggle-row" id="c-single-row"><div class="tr-label">Single use (consumed when redeemed)</div><div class="switch${c.single_use?' on':''}" id="c-single"></div></div>
+    <div id="c-freq-hint" class="muted" style="font-size:11px;display:none;margin-top:4px;">Creates one single-use comp per period in the date range.</div>`}
     <div class="row2">
       <div><label class="field">Valid from</label><input type="date" id="c-from" value="${esc(c.valid_from||'')}"></div>
       <div><label class="field">Valid to</label><input type="date" id="c-to" value="${esc(c.valid_to||'')}"></div>
@@ -1668,15 +1687,20 @@ function openCompSheet(comp){
     const single=document.getElementById('c-single');
     single.addEventListener('click',()=>single.classList.toggle('on'));
     document.querySelectorAll('#c-dow .dow-btn').forEach(b=>b.addEventListener('click',()=>b.classList.toggle('sel')));
-    // Scan a flyer/mailer photo -> ct-scan-comp (Claude vision) -> prefill the fields.
+    // Redeem frequency (new comps only): once / once-per-week / once-per-weekend.
+    const freqSeg=document.getElementById('c-freq'); let selFreq='once';
+    const singleRow=document.getElementById('c-single-row'), freqHint=document.getElementById('c-freq-hint');
+    function applyFreq(){if(singleRow)singleRow.style.display=selFreq==='once'?'':'none';if(freqHint)freqHint.style.display=selFreq==='once'?'none':'block';}
+    function setFreq(f){if(!freqSeg)return;selFreq=(f==='weekly'||f==='weekend')?f:'once';freqSeg.querySelectorAll('button').forEach(x=>x.classList.toggle('sel',x.dataset.freq===selFreq));applyFreq();}
+    if(freqSeg){freqSeg.querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>setFreq(b.dataset.freq)));applyFreq();}
+    function setDow(list){document.querySelectorAll('#c-dow .dow-btn').forEach(b=>b.classList.toggle('sel',(list||[]).includes(Number(b.dataset.dow))));}
+    // Scan a flyer/mailer photo -> ct-scan-comp -> prefill; a recurring offer is expanded.
     function prefillComp(cp){
       if(cp.title)document.getElementById('c-title').value=cp.title;
       if(cp.casino){const sel=document.getElementById('c-casino');let opt=[...sel.options].find(o=>o.value===cp.casino);if(!opt){opt=new Option(cp.casino,cp.casino);sel.add(opt);}sel.value=cp.casino;}
       if(cp.valid_from)document.getElementById('c-from').value=cp.valid_from;
       if(cp.valid_to)document.getElementById('c-to').value=cp.valid_to;
-      if(cp.single_use)single.classList.add('on');
       if(cp.notes)document.getElementById('c-notes').value=cp.notes;
-      if(Array.isArray(cp.days_of_week))document.querySelectorAll('#c-dow .dow-btn').forEach(b=>b.classList.toggle('sel',cp.days_of_week.includes(Number(b.dataset.dow))));
     }
     const scanBtn=document.getElementById('c-scan');
     if(scanBtn){
@@ -1687,8 +1711,21 @@ function openCompSheet(comp){
         scanBtn.disabled=true;st.style.color='';st.textContent='Reading flyer…';
         try{const {data,media_type}=await fileToScaledBase64(f);
           const r=await api('ct-scan-comp',{image:data,media_type,today:state.today,casinos:CASINOS});
-          if(r&&r.ok&&r.comp){prefillComp(r.comp);st.textContent='Filled in — check it, then Save.';}
-          else st.textContent=(r&&r.message)||'Couldn’t read a comp — enter it manually.';
+          if(r&&r.ok&&r.comp){
+            const cp=r.comp;prefillComp(cp);
+            const reds=Array.isArray(cp.redemptions)?cp.redemptions:[];
+            if(reds.length>1){ // multiple rules (e.g. once/week + once/weekend) -> expand all, confirm
+              const base={person:document.getElementById('c-person').value.trim()||'Me',title:cp.title,casino:cp.casino,notes:cp.notes};
+              let comps=[];reds.forEach(rd=>{if(rd.frequency==='weekly'||rd.frequency==='weekend')comps=comps.concat(expandComps(base,rd.frequency,rd.dow,cp.valid_from,cp.valid_to));else comps.push({...base,single_use:!!cp.single_use,valid_from:cp.valid_from||null,valid_to:cp.valid_to||null,dow:rd.dow||null});});
+              if(comps.length){st.textContent=`Recurring offer — ${comps.length} comps.`;
+                if(await confirmDialog(`This offer expands to ${comps.length} one-time comps for ${base.person}. Create them?`,{confirmLabel:'Create '+comps.length})){const ok=afterWrite(await api('ct-write',{action:'save-comps',comps}));if(ok){toast('Added '+comps.length+' comps.');return;}}}
+              else st.textContent='Couldn’t work out the dates — enter it manually.';
+            }else{ // single rule -> fill the form for review
+              const rd=reds[0]||{frequency:'once',dow:null};
+              setFreq(rd.frequency);setDow(rd.dow);if(rd.frequency==='once'&&cp.single_use)single.classList.add('on');
+              st.textContent='Filled in — check it, then Save.';
+            }
+          } else st.textContent=(r&&r.message)||'Couldn’t read a comp — enter it manually.';
         }catch(e){st.textContent='Scan failed — enter it manually.';}
         finally{scanBtn.disabled=false;fi.value='';}
       });
@@ -1697,17 +1734,20 @@ function openCompSheet(comp){
     saveBtn.addEventListener('click',async()=>{
       if(saveBtn.disabled)return;
       const dow=[...document.querySelectorAll('#c-dow .dow-btn.sel')].map(b=>Number(b.dataset.dow));
-      const payload={action:'save-comp',id:c.id||undefined,
-        person:document.getElementById('c-person').value.trim()||'Me',
-        title:document.getElementById('c-title').value.trim()||'Comp',
-        casino:document.getElementById('c-casino').value.trim()||null,
-        notes:document.getElementById('c-notes').value.trim()||null,
-        single_use:single.classList.contains('on'),
-        valid_from:document.getElementById('c-from').value||null,
-        valid_to:document.getElementById('c-to').value||null,
-        dow};
-      saveBtn.disabled=true;saveBtn.textContent='Saving…';
-      const ok=afterWrite(await api('ct-write',payload));
+      const person=document.getElementById('c-person').value.trim()||'Me';
+      const title=document.getElementById('c-title').value.trim()||'Comp';
+      const casino=document.getElementById('c-casino').value.trim()||null;
+      const notes=document.getElementById('c-notes').value.trim()||null;
+      const from=document.getElementById('c-from').value||null,to=document.getElementById('c-to').value||null;
+      saveBtn.disabled=true;saveBtn.textContent='Saving…';let ok;
+      if(selFreq==='once'){
+        ok=afterWrite(await api('ct-write',{action:'save-comp',id:c.id||undefined,person,title,casino,notes,single_use:single.classList.contains('on'),valid_from:from,valid_to:to,dow}));
+      }else{
+        if(!from||!to){toast('Add a valid-from and valid-to date range for a recurring comp.');saveBtn.disabled=false;saveBtn.textContent='Save';return;}
+        const comps=expandComps({person,title,casino,notes},selFreq,dow,from,to);
+        if(!comps.length){toast('No eligible periods in that range.');saveBtn.disabled=false;saveBtn.textContent='Save';return;}
+        ok=afterWrite(await api('ct-write',{action:'save-comps',comps}));if(ok)toast('Added '+comps.length+' comps.');
+      }
       if(!ok){saveBtn.disabled=false;saveBtn.textContent='Save';}
     });
     if(editing){document.getElementById('c-del').addEventListener('click',async()=>{
@@ -1974,7 +2014,8 @@ async function mockApi(name,payload){
   }
   if(name==='ct-write'){mockWrite(payload);return {ok:true,bootstrap:mockBootstrap(today)};}
   if(name==='ct-scan-ticket'){await new Promise(r=>setTimeout(r,600));return {ok:true,amount:123.45,raw:'123.45'};}
-  if(name==='ct-scan-comp'){await new Promise(r=>setTimeout(r,700));return {ok:true,comp:{title:'$75 Free Play',casino:'Sky River',valid_from:todayLocal(),valid_to:null,days_of_week:null,single_use:true,notes:'From mailer (demo)'}};}
+  if(name==='ct-scan-comp'){await new Promise(r=>setTimeout(r,700));const f=new Date(),t=new Date();t.setDate(t.getDate()+34);const iso=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    return {ok:true,comp:{title:'$20 Bonus Play',casino:'Thunder Valley',valid_from:iso(f),valid_to:iso(t),redemptions:[{frequency:'weekly',dow:[1,2,3,4]},{frequency:'weekend',dow:[5,6,0]}],single_use:true,notes:'Once/week (Mon–Thu) & once/weekend (Fri–Sun) — demo'}};}
   return {ok:false,message:'mock: unknown '+name};
 }
 function mockWrite(b){
@@ -2020,6 +2061,7 @@ function mockWrite(b){
     single_use:!!b.single_use,valid_from:b.valid_from||null,valid_to:b.valid_to||null,dow:(Array.isArray(b.dow)&&b.dow.length)?b.dow.slice():null};
     if(b.id){const c=(mockDB.comps||[]).find(x=>x.id===b.id);if(c)Object.assign(c,f);}
     else (mockDB.comps=mockDB.comps||[]).push({id:mockId('cp'),...f,used:false,used_dates:[],created_at:new Date().toISOString()});}
+  else if(a==='save-comps'){(Array.isArray(b.comps)?b.comps:[]).forEach(cc=>{const f={person:cc.person||'Me',casino:cc.casino||null,title:cc.title||'Comp',notes:cc.notes??null,single_use:!!cc.single_use,valid_from:cc.valid_from||null,valid_to:cc.valid_to||null,dow:(Array.isArray(cc.dow)&&cc.dow.length)?cc.dow.slice():null};(mockDB.comps=mockDB.comps||[]).push({id:mockId('cp'),...f,used:false,used_dates:[],created_at:new Date().toISOString()});});}
   else if(a==='delete-comp'){mockDB.comps=(mockDB.comps||[]).filter(x=>x.id!==b.id);}
   else if(a==='use-comp'){const c=(mockDB.comps||[]).find(x=>x.id===b.id);if(c){if(c.single_use)c.used=true;
     else{c.used_dates=c.used_dates||[];if(!c.used_dates.includes(b.date))c.used_dates.push(b.date);}}}
