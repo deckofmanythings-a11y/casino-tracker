@@ -317,9 +317,11 @@
 
   /* Marble-faced surfaces with a gold bevel edge */
   .card,.day-header,.trip-banner,.tile,.sess-row,.game-row,.jp-row,.sheet-panel,.auth-card,
-  .money-block,.bonus-row,.toggle-row,.cat-tile,.hist-day,.hist-grp{
+  .money-block,.bonus-row,.toggle-row,.cat-tile,.hist-day,.hist-grp,
+  .comp-row,.comp-pop-row,.casino-color-row{
     border:2px solid transparent;
     background:linear-gradient(var(--surf,#f6f2e8),var(--surf,#f6f2e8)) padding-box, var(--edge) border-box;}
+  .comp-pop-row,.casino-color-row{--surf:#efe8d9;}
   .hist-day{--surf:#f4ecd9;}
   .cat-tile.open{color:#2a1c04;
     background:linear-gradient(135deg,#f8e79f,#d8ab44) padding-box, var(--edge) border-box;}
@@ -372,6 +374,40 @@
   .jp-toggle{font-size:9px;font-weight:800;letter-spacing:.5px;padding:2px 6px;border-radius:5px;text-transform:uppercase;
     cursor:pointer;user-select:none;border:1px solid var(--gold-dim);color:var(--gold-dim);background:transparent;opacity:.55;}
   .jp-toggle.on{background:var(--gold);color:#241c00;border-color:var(--gold);opacity:1;}
+
+  /* ── Comps ──────────────────────────────────────────────── */
+  .comp-row{display:flex;align-items:center;gap:11px;padding:11px 13px;border-radius:14px;margin-top:8px;cursor:pointer;}
+  .comp-dot{width:12px;height:12px;border-radius:50%;flex:0 0 auto;box-shadow:0 0 0 1px rgba(60,45,20,.18);}
+  .comp-main{min-width:0;flex:1;}
+  .comp-main .comp-title{font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .comp-main .comp-sub{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px;}
+  .comp-state{flex:0 0 auto;font-size:11px;color:var(--faint);}
+  .comp-pill{font-size:9px;font-weight:800;letter-spacing:.6px;background:var(--gold);color:#241c00;
+    border-radius:6px;padding:3px 7px;text-transform:uppercase;}
+  .comp-avail-card{text-align:center;}
+  .comp-avail-card .cac-n{font-size:34px;font-weight:800;line-height:1.05;color:var(--gold);letter-spacing:-1px;}
+  .comp-avail-card .cac-lbl{font-size:12px;color:var(--muted);margin-top:2px;}
+  .comp-btn-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;}
+  .comp-btn-row .btn{flex:1 1 auto;padding:10px;font-size:13px;}
+  /* Weekday toggle buttons */
+  .dow-row{display:flex;gap:6px;}
+  .dow-btn{flex:1 1 0;min-width:0;padding:9px 0;border-radius:10px;font-size:13px;font-weight:700;text-align:center;
+    cursor:pointer;user-select:none;color:var(--muted);border:2px solid transparent;
+    background:linear-gradient(#efe8d9,#efe8d9) padding-box, var(--edge-soft) border-box;}
+  .dow-btn.sel{color:#2a1c04;background:linear-gradient(135deg,#f8e79f,#d8ab44) padding-box, var(--edge) border-box;}
+  /* Popup + casino-colour rows */
+  .comp-pop-row,.casino-color-row{display:flex;align-items:center;gap:11px;padding:10px 12px;border-radius:13px;margin-top:8px;}
+  .comp-pop-row .cpr-main{min-width:0;flex:1;}
+  .comp-pop-row .cpr-title{font-weight:700;font-size:14px;}
+  .comp-pop-row .cpr-sub{font-size:12px;color:var(--muted);margin-top:1px;}
+  .comp-pop-row.used{opacity:.6;}
+  .comp-pop-row.used .cpr-title{text-decoration:line-through;}
+  .comp-pop-row .cpr-btn{flex:0 0 auto;padding:8px 12px;font-size:13px;border-radius:11px;font-weight:700;cursor:pointer;
+    color:#2a1c04;border:2px solid transparent;background:linear-gradient(135deg,#f8e79f,#d8ab44) padding-box, var(--edge) border-box;}
+  .comp-pop-row .cpr-done{flex:0 0 auto;font-size:12px;font-weight:700;color:var(--win);}
+  .casino-color-row .ccr-name{min-width:0;flex:1;font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .casino-color-row input[type=color]{flex:0 0 auto;width:38px;height:34px;padding:2px;border-radius:9px;cursor:pointer;}
+  .casino-color-row input.ccr-cat{flex:1 1 120px;min-width:90px;font-size:13px;padding:8px 10px;}
 </style>
 </head>
 <body>
@@ -443,6 +479,12 @@
     <div id="bankroll-body"></div>
   </div>
 
+  <!-- ── COMPS ─────────────────────────────────────────────── -->
+  <div id="screen-comps" class="screen">
+    <h1 style="font-size:22px;margin:6px 2px 4px;">Comps</h1>
+    <div id="comps-body"></div>
+  </div>
+
   <!-- ── GAMES ─────────────────────────────────────────────── -->
   <div id="screen-games" class="screen">
     <h1 style="font-size:22px;margin:6px 2px 10px;">Fast-Select Games</h1>
@@ -466,6 +508,7 @@
   <button class="nav-btn" data-tab="history"><span class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3.2 2"/></svg></span>History</button>
   <button class="nav-btn" data-tab="stats"><span class="ic"><svg viewBox="0 0 24 24"><path d="M4 20V11"/><path d="M10 20V5"/><path d="M16 20v-6"/><path d="M21 20H3"/></svg></span>Stats</button>
   <button class="nav-btn" data-tab="bankroll"><span class="ic"><svg viewBox="0 0 24 24"><path d="M4 8V6.5A2 2 0 0 1 6 4.5h11"/><path d="M3.5 8h15a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/><circle class="dot" cx="16.5" cy="13.5" r="1.3"/></svg></span>Bankroll</button>
+  <button class="nav-btn" data-tab="comps"><span class="ic"><svg viewBox="0 0 24 24"><path d="M4 8h16v3a1.6 1.6 0 0 0 0 2v3H4v-3a1.6 1.6 0 0 0 0-2z"/><path d="M12 8v8" stroke-dasharray="1.6 2.2"/><path d="M9.5 8 12 5l2.5 3"/></svg></span>Comps</button>
   <button class="nav-btn" data-tab="games"><span class="ic"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3.5"/><circle class="dot" cx="9" cy="9" r="1.2"/><circle class="dot" cx="12" cy="12" r="1.2"/><circle class="dot" cx="15" cy="15" r="1.2"/></svg></span>Games</button>
 </div></nav>
 
@@ -475,7 +518,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.8.7';
+const APP_VERSION='0.9.0';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -515,7 +558,8 @@ function genKey(){try{if(crypto.randomUUID)return crypto.randomUUID();}catch(_){
 function cacheState(){
   try{localStorage.setItem(CACHE_KEY,JSON.stringify({uid:account&&account.auth_user_id,account,bootstrap:{
     today:state.today,games:state.games,active_trip:state.active_trip,
-    active_trip_totals:state.active_trip_totals,sessions:state.sessions,stakes:state.stakes},ts:Date.now()}));}catch(_){}
+    active_trip_totals:state.active_trip_totals,sessions:state.sessions,stakes:state.stakes,
+    comps:state.comps,comp_casinos:state.comp_casinos},ts:Date.now()}));}catch(_){}
 }
 function readCache(){try{const s=localStorage.getItem(CACHE_KEY);return s?JSON.parse(s):null;}catch(_){return null;}}
 
@@ -523,7 +567,7 @@ function readCache(){try{const s=localStorage.getItem(CACHE_KEY);return s?JSON.p
 let account=null;
 let userEmail=null;
 let booted=false;
-let state={today:todayLocal(),games:[],active_trip:null,active_trip_totals:null,sessions:[],stakes:[]};
+let state={today:todayLocal(),games:[],active_trip:null,active_trip_totals:null,sessions:[],stakes:[],comps:[],comp_casinos:[]};
 let currentTab='today';
 let lastJackpots=[];
 let statsData=null;
@@ -718,13 +762,14 @@ function boot(acct,bootstrap){
   $('auth-reconnect').style.display='none';
   $('app').classList.add('show');
   setTab(currentTab||'today');
+  maybeShowCompsPopup();
 }
 
 async function doSignOut(){
   try{await sb.auth.signOut();}catch(_){}
   try{localStorage.removeItem(CACHE_KEY);}catch(_){}
   account=null;booted=false;userEmail=null;
-  state={today:todayLocal(),games:[],active_trip:null,active_trip_totals:null,sessions:[],stakes:[]};
+  state={today:todayLocal(),games:[],active_trip:null,active_trip_totals:null,sessions:[],stakes:[],comps:[],comp_casinos:[]};
   $('app').classList.remove('show');
   showAuthScreen('login');
 }
@@ -762,6 +807,7 @@ function setTab(tab){
   if(tab==='history')loadHistory();
   if(tab==='stats')loadStats();
   if(tab==='bankroll')renderBankroll();
+  if(tab==='comps')renderComps();
   if(tab==='games')renderGames();
 }
 document.querySelectorAll('.nav-btn').forEach(b=>b.addEventListener('click',()=>setTab(b.dataset.tab)));
@@ -979,6 +1025,7 @@ function afterWrite(resp){
   closeSheet();
   if(currentTab==='today')renderToday();
   else if(currentTab==='bankroll')renderBankroll();
+  else if(currentTab==='comps')renderComps();
   else if(currentTab==='games')renderGames();
   else if(currentTab==='history')loadHistory();
   else if(currentTab==='stats')loadStats();
@@ -1522,6 +1569,194 @@ function renderBankroll(){
   }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+//  Comps — per-person casino offers with an eligibility window, colour-coded by
+//  casino, surfaced through a once-a-day launch popup listing what's live today.
+// ═══════════════════════════════════════════════════════════════════════════
+function compColor(comp){const m=(state.comp_casinos||[]).find(c=>c.casino===comp.casino);return m?m.color:'#a9801f';}
+function compWeekday(dateStr){const [y,m,d]=dateStr.split('-').map(Number);return new Date(y,m-1,d).getDay();}
+function compAvailable(comp,dateStr){
+  if(comp.valid_from && dateStr<comp.valid_from) return false;
+  if(comp.valid_to && dateStr>comp.valid_to) return false;
+  if(comp.dow && comp.dow.length && !comp.dow.includes(compWeekday(dateStr))) return false;
+  if(comp.single_use && comp.used) return false;
+  if(!comp.single_use && (comp.used_dates||[]).includes(dateStr)) return false;
+  return true;
+}
+function compEligLabel(comp){ // short human summary, e.g. "Tuesdays", "Sep 20–26", "One-time", "Any day"
+  const dowNames=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const parts=[];
+  if(comp.dow&&comp.dow.length) parts.push(comp.dow.slice().sort((a,b)=>a-b).map(d=>dowNames[d]).join(', '));
+  if(comp.valid_from||comp.valid_to){const f=comp.valid_from?prettyDate(comp.valid_from):'…';const t=comp.valid_to?prettyDate(comp.valid_to):'…';parts.push(comp.valid_from===comp.valid_to?prettyDate(comp.valid_from):`${f} – ${t}`);}
+  if(comp.single_use) parts.push('one-time');
+  return parts.join(' · ')||'Any day';
+}
+// Distinct comp persons, "Me" surfaced first.
+function compPersons(list){
+  const seen=[];(list||state.comps||[]).forEach(c=>{const p=c.person||'—';if(!seen.includes(p))seen.push(p);});
+  seen.sort((a,b)=>a==='Me'?-1:b==='Me'?1:0);
+  return seen;
+}
+function renderComps(){
+  const body=document.getElementById('comps-body');
+  const comps=state.comps||[];
+  const availN=comps.filter(c=>compAvailable(c,state.today)).length;
+  let html=`<div class="card comp-avail-card">
+    <div class="cac-n">${availN}</div>
+    <div class="cac-lbl">${availN===1?'comp':'comps'} available today</div>
+    <div class="comp-btn-row">
+      <button class="btn primary" id="comp-new">+ New comp</button>
+      <button class="btn" id="comp-today">Today’s comps</button>
+      <button class="btn" id="comp-colors">Casino colours</button>
+    </div>
+  </div>`;
+  if(!comps.length){
+    html+=`<div class="empty">No comps yet. Add the offers you and your family have.</div>`;
+  }else{
+    compPersons(comps).forEach(person=>{
+      html+=`<div class="section-label">${esc(person)}</div>`;
+      html+=comps.filter(c=>(c.person||'—')===person).map(compRowHtml).join('');
+    });
+  }
+  body.innerHTML=html;
+  document.getElementById('comp-new').addEventListener('click',()=>openCompSheet());
+  document.getElementById('comp-today').addEventListener('click',()=>showCompsPopup(true));
+  document.getElementById('comp-colors').addEventListener('click',()=>openCasinoColorsSheet());
+  body.querySelectorAll('[data-comp]').forEach(el=>el.addEventListener('click',()=>{
+    const c=(state.comps||[]).find(x=>x.id===el.dataset.comp);if(c)openCompSheet(c);}));
+}
+function compRowHtml(c){
+  const avail=compAvailable(c,state.today);
+  const sub=`${esc(c.person||'—')} · ${esc(c.casino||'—')} · ${esc(compEligLabel(c))}`;
+  const st=avail?'<span class="comp-pill">TODAY</span>':`<span class="comp-state">${c.single_use&&c.used?'used':'—'}</span>`;
+  return `<div class="comp-row" data-comp="${c.id}">
+    <span class="comp-dot" style="background:${esc(compColor(c))}"></span>
+    <div class="comp-main"><div class="comp-title">${esc(c.title||'Comp')}</div><div class="comp-sub">${sub}</div></div>
+    <div>${st}</div>
+  </div>`;
+}
+function openCompSheet(comp){
+  const c=comp||{};const editing=!!c.id;
+  const people=['Me','Wife','Son'];
+  (state.comps||[]).forEach(x=>{if(x.person&&!people.includes(x.person))people.push(x.person);});
+  const dowSel=Array.isArray(c.dow)?c.dow:[];
+  const dowLetters=['S','M','T','W','T','F','S'];
+  openSheet(editing?'Edit comp':'New comp',`
+    <label class="field">Person</label>
+    <input id="c-person" list="dl-people" autocomplete="off" value="${esc(c.person||'Me')}">
+    <datalist id="dl-people">${people.map(p=>`<option value="${esc(p)}"></option>`).join('')}</datalist>
+    <label class="field">Title</label>
+    <input id="c-title" placeholder="e.g. $50 Free Play" value="${esc(c.title||'')}">
+    <label class="field">Casino</label>
+    ${casinoSelect('c-casino', c.casino||'')}
+    <div class="toggle-row"><div class="tr-label">Single use (one-time only)</div>
+      <div class="switch${c.single_use?' on':''}" id="c-single"></div></div>
+    <div class="row2">
+      <div><label class="field">Valid from</label><input type="date" id="c-from" value="${esc(c.valid_from||'')}"></div>
+      <div><label class="field">Valid to</label><input type="date" id="c-to" value="${esc(c.valid_to||'')}"></div>
+    </div>
+    <label class="field">Weekdays (leave blank for any day)</label>
+    <div class="dow-row" id="c-dow">${dowLetters.map((L,i)=>`<div class="dow-btn${dowSel.includes(i)?' sel':''}" data-dow="${i}">${L}</div>`).join('')}</div>
+    <label class="field">Notes</label>
+    <textarea id="c-notes" placeholder="Anything worth remembering…">${esc(c.notes||'')}</textarea>
+    <div class="sheet-actions">
+      ${editing?'<button class="btn danger" id="c-del">Delete</button>':''}
+      <button class="btn primary" id="c-save">Save</button>
+    </div>
+  `,()=>{
+    const single=document.getElementById('c-single');
+    single.addEventListener('click',()=>single.classList.toggle('on'));
+    document.querySelectorAll('#c-dow .dow-btn').forEach(b=>b.addEventListener('click',()=>b.classList.toggle('sel')));
+    const saveBtn=document.getElementById('c-save');
+    saveBtn.addEventListener('click',async()=>{
+      if(saveBtn.disabled)return;
+      const dow=[...document.querySelectorAll('#c-dow .dow-btn.sel')].map(b=>Number(b.dataset.dow));
+      const payload={action:'save-comp',id:c.id||undefined,
+        person:document.getElementById('c-person').value.trim()||'Me',
+        title:document.getElementById('c-title').value.trim()||'Comp',
+        casino:document.getElementById('c-casino').value.trim()||null,
+        notes:document.getElementById('c-notes').value.trim()||null,
+        single_use:single.classList.contains('on'),
+        valid_from:document.getElementById('c-from').value||null,
+        valid_to:document.getElementById('c-to').value||null,
+        dow};
+      saveBtn.disabled=true;saveBtn.textContent='Saving…';
+      const ok=afterWrite(await api('ct-write',payload));
+      if(!ok){saveBtn.disabled=false;saveBtn.textContent='Save';}
+    });
+    if(editing){document.getElementById('c-del').addEventListener('click',async()=>{
+      if(!await confirmDialog('Delete this comp?',{confirmLabel:'Delete',danger:true}))return;
+      afterWrite(await api('ct-write',{action:'delete-comp',id:c.id}));
+    });}
+  });
+}
+function openCasinoColorsSheet(){
+  const PRESET='#a9801f';
+  openSheet('Casino colours','<div id="cc-list"></div><div class="sheet-actions"><button class="btn primary" data-close-sheet>Done</button></div>',()=>{
+    const listEl=document.getElementById('cc-list');
+    const casinoNames=()=>{const set=[];const add=n=>{if(n&&!set.includes(n))set.push(n);};
+      CASINOS.forEach(add);(state.comps||[]).forEach(c=>add(c.casino));(state.comp_casinos||[]).forEach(c=>add(c.casino));return set;};
+    const meta=name=>(state.comp_casinos||[]).find(c=>c.casino===name)||{};
+    listEl.innerHTML=casinoNames().map(name=>{const m=meta(name);
+      return `<div class="casino-color-row" data-casino="${esc(name)}">
+        <input type="color" class="ccr-color" value="${esc(m.color||PRESET)}">
+        <div class="ccr-name">${esc(name)}</div>
+        <input type="text" class="ccr-cat" placeholder="Category" value="${esc(m.category||'')}">
+      </div>`;}).join('')||'<div class="empty">No casinos yet.</div>';
+    // Save on colour change / category blur WITHOUT closing the sheet — apply the returned
+    // bootstrap in place so the picker (and every other row) stays exactly where it is.
+    listEl.querySelectorAll('.casino-color-row').forEach(row=>{
+      const name=row.dataset.casino,colorInp=row.querySelector('.ccr-color'),catInp=row.querySelector('.ccr-cat');
+      const save=async()=>{const r=await api('ct-write',{action:'set-casino-color',casino:name,color:colorInp.value,category:catInp.value.trim()||null});
+        if(r&&r.ok){applyBootstrap(r.bootstrap);cacheState();if(currentTab==='comps')renderComps();}};
+      colorInp.addEventListener('change',save);
+      catInp.addEventListener('blur',save);
+    });
+  });
+}
+// ── Daily launch popup ────────────────────────────────────────────────────────
+function showCompsPopup(force){
+  const avail=(state.comps||[]).filter(c=>compAvailable(c,state.today));
+  if(!avail.length && !force) return;
+  openSheet(`Today’s comps · ${prettyDate(state.today)}`,
+    '<div id="cp-pop-body"></div><div class="sheet-actions"><button class="btn primary" data-close-sheet>Done</button></div>',
+    ()=>renderCompsPopupBody());
+}
+function renderCompsPopupBody(){
+  const wrap=document.getElementById('cp-pop-body');if(!wrap)return;
+  const avail=(state.comps||[]).filter(c=>compAvailable(c,state.today));
+  if(!avail.length){wrap.innerHTML='<div class="empty">All done for today ✓</div>';return;}
+  let html='';
+  compPersons(avail).forEach(person=>{
+    html+=`<div class="section-label">${esc(person)}</div>`;
+    avail.filter(c=>(c.person||'—')===person).forEach(c=>{
+      html+=`<div class="comp-pop-row" data-poprow="${c.id}">
+        <span class="comp-dot" style="background:${esc(compColor(c))}"></span>
+        <div class="cpr-main"><div class="cpr-title">${esc(c.title||'Comp')}</div><div class="cpr-sub">${esc(c.casino||'—')}</div></div>
+        <button class="cpr-btn" data-use="${c.id}">Mark used</button>
+      </div>`;
+    });
+  });
+  wrap.innerHTML=html;
+  wrap.querySelectorAll('[data-use]').forEach(btn=>btn.addEventListener('click',async()=>{
+    if(btn.disabled)return;btn.disabled=true;btn.textContent='…';
+    const r=await api('ct-write',{action:'use-comp',id:btn.dataset.use,date:state.today});
+    if(r&&r.ok){applyBootstrap(r.bootstrap);cacheState();renderCompsPopupBody();if(currentTab==='comps')renderComps();}
+    else{btn.disabled=false;btn.textContent='Mark used';}
+  }));
+}
+// Auto-show at most once per calendar day per user (keyed by auth id; 'mock' offline).
+function maybeShowCompsPopup(){
+  try{
+    const k='comps_popup_'+((account&&account.auth_user_id)||'mock');
+    const last=localStorage.getItem(k);
+    if(last!==state.today){
+      const avail=(state.comps||[]).filter(c=>compAvailable(c,state.today));
+      if(avail.length){localStorage.setItem(k,state.today);showCompsPopup(false);}
+    }
+  }catch(_){}
+}
+
 // ── Games manager ────────────────────────────────────────────────────────────
 function renderGames(){
   const body=document.getElementById('games-body');
@@ -1676,6 +1911,16 @@ function mockSeed(){
       {id:'k2',account_id:'me',person:'Dana',casino:'Sky River',stake_amount:300,returned:180,notes:null,started_at:dayAgo(1)+'T19:00:00',ended_at:dayAgo(1)+'T22:00:00'},
       {id:'k3',account_id:'me',person:'Lee',casino:'Cache Creek',stake_amount:400,returned:null,notes:null,started_at:todayLocal()+'T12:00:00',ended_at:null},
     ],
+    comps:[
+      {id:'cp1',person:'Me',casino:'Thunder Valley',title:'$50 Free Play',notes:null,single_use:false,valid_from:null,valid_to:null,dow:[new Date().getDay()],used:false,used_dates:[],created_at:t+'T00:00:00'},
+      {id:'cp2',person:'Wife',casino:'Sky River',title:'Free buffet',notes:null,single_use:true,valid_from:todayLocal(),valid_to:todayLocal(),dow:null,used:false,used_dates:[],created_at:t+'T00:00:00'},
+      {id:'cp3',person:'Son',casino:'Cache Creek',title:'$20 match play',notes:null,single_use:false,valid_from:null,valid_to:null,dow:[6],used:false,used_dates:[],created_at:t+'T00:00:00'},
+    ],
+    comp_casinos:[
+      {casino:'Thunder Valley',color:'#c0392b',category:'Sacramento'},
+      {casino:'Sky River',color:'#2f80ed',category:'Sacramento'},
+      {casino:'Cache Creek',color:'#27ae60',category:'Capay'},
+    ],
   };
 }
 function mockBootstrap(today){
@@ -1688,7 +1933,8 @@ function mockBootstrap(today){
     const ts=mockDB.sessions.filter(s=>!st||(s.started_at||'')>=st);
     const buyins=ts.reduce((x,s)=>x+num(s.buy_in_total),0),cashouts=ts.reduce((x,s)=>x+num(s.cash_out),0);
     active_trip_totals={buyins,cashouts,net:cashouts-buyins,remaining:num(active_trip.starting_bankroll)-buyins+cashouts};}
-  return {today,games,active_trip,active_trip_totals,sessions,stakes:(mockDB.stakes||[]).slice()};
+  return {today,games,active_trip,active_trip_totals,sessions,stakes:(mockDB.stakes||[]).slice(),
+    comps:(mockDB.comps||[]).slice(),comp_casinos:(mockDB.comp_casinos||[]).slice()};
 }
 function mockRecompute(s){s.buy_in_total=s.buyins.reduce((x,b)=>x+num(b.amount),0);}
 function mockId(p){return p+Math.random().toString(36).slice(2,8);}
@@ -1743,6 +1989,18 @@ function mockWrite(b){
       (mockDB.stakes=mockDB.stakes||[]).push(k);}}
   else if(a==='settle-stake'){const k=(mockDB.stakes||[]).find(x=>x.id===b.id);if(k){k.returned=num(b.returned);k.ended_at=new Date().toISOString();}}
   else if(a==='delete-stake'){mockDB.stakes=(mockDB.stakes||[]).filter(x=>x.id!==b.id);}
+  else if(a==='save-comp'){const f={person:(b.person||'Me').trim()||'Me',casino:b.casino||null,title:b.title||'Comp',notes:b.notes??null,
+    single_use:!!b.single_use,valid_from:b.valid_from||null,valid_to:b.valid_to||null,dow:(Array.isArray(b.dow)&&b.dow.length)?b.dow.slice():null};
+    if(b.id){const c=(mockDB.comps||[]).find(x=>x.id===b.id);if(c)Object.assign(c,f);}
+    else (mockDB.comps=mockDB.comps||[]).push({id:mockId('cp'),...f,used:false,used_dates:[],created_at:new Date().toISOString()});}
+  else if(a==='delete-comp'){mockDB.comps=(mockDB.comps||[]).filter(x=>x.id!==b.id);}
+  else if(a==='use-comp'){const c=(mockDB.comps||[]).find(x=>x.id===b.id);if(c){if(c.single_use)c.used=true;
+    else{c.used_dates=c.used_dates||[];if(!c.used_dates.includes(b.date))c.used_dates.push(b.date);}}}
+  else if(a==='unuse-comp'){const c=(mockDB.comps||[]).find(x=>x.id===b.id);if(c){if(c.single_use)c.used=false;
+    else c.used_dates=(c.used_dates||[]).filter(d=>d!==b.date);}}
+  else if(a==='set-casino-color'){mockDB.comp_casinos=mockDB.comp_casinos||[];const m=mockDB.comp_casinos.find(x=>x.casino===b.casino);
+    if(m){m.color=b.color;m.category=(b.category!==undefined)?b.category:(m.category??null);}
+    else mockDB.comp_casinos.push({casino:b.casino,color:b.color,category:b.category??null});}
 }
 function mockStats(){
   const sessions=mockDB.sessions;const closed=sessions.filter(s=>s.cash_out!=null);
