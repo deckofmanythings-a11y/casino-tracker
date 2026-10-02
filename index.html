@@ -518,7 +518,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.2';
+const APP_VERSION='0.9.3';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -589,7 +589,7 @@ function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&l
 
 // Casinos for the picker. Add more here (via Claude Code) — no in-app "add casino" by design.
 const CASINOS=["Harrah's Northern California","Sky River","Jackson Rancheria","Cache Creek",
-  "Thunder Valley","Hard Rock Sacramento","Atlantis","GSR"];
+  "Thunder Valley","Red Hawk","Hard Rock Sacramento","Atlantis","GSR"];
 // Build a <select> of casinos. Any existing off-list value (e.g. a legacy free-text casino)
 // is kept as a selectable option so editing an old record never silently drops it.
 function casinoSelect(id,selected){
