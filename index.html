@@ -518,7 +518,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.3';
+const APP_VERSION='0.9.4';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -1614,6 +1614,17 @@ function compPersons(list){
   seen.sort((a,b)=>a==='Me'?-1:b==='Me'?1:0);
   return seen;
 }
+function addDays(dateStr,n){const [y,m,d]=dateStr.split('-').map(Number);const dt=new Date(y,m-1,d);dt.setDate(dt.getDate()+n);return isoDate(dt);}
+// Sort key for the Comps list: the soonest date the comp is available (today or later).
+// Used-up single-use comps and fully-past ones sink to the bottom ('~…' sorts after dates).
+function compNextDate(comp){
+  if(comp.single_use&&comp.used) return '~2';
+  const today=state.today;
+  let d=(comp.valid_from&&comp.valid_from>today)?comp.valid_from:today;
+  const end=comp.valid_to||addDays(d,370);
+  for(let i=0;i<420&&d<=end;i++){ if(compAvailable(comp,d)) return d; d=addDays(d,1); }
+  return '~1'+(comp.valid_to||comp.valid_from||'');
+}
 function renderComps(){
   const body=document.getElementById('comps-body');
   const comps=state.comps||[];
@@ -1632,7 +1643,9 @@ function renderComps(){
   }else{
     compPersons(comps).forEach(person=>{
       html+=`<div class="section-label">${esc(person)}</div>`;
-      html+=comps.filter(c=>(c.person||'—')===person).map(compRowHtml).join('');
+      html+=comps.filter(c=>(c.person||'—')===person)
+        .slice().sort((a,b)=>{const ka=compNextDate(a),kb=compNextDate(b);return ka<kb?-1:ka>kb?1:0;})
+        .map(compRowHtml).join('');
     });
   }
   body.innerHTML=html;
