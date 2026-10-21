@@ -526,7 +526,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.7';
+const APP_VERSION='0.9.8';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -582,6 +582,7 @@ let statsData=null;
 let bonusShown=3;
 let byGameMode='net'; // 'net' | 'avg' — Net-by-game display toggle
 let byCasinoMode='net';
+let lifetimeMode='net'; // 'net' | 'avg' — lifetime total vs per-session average
 let openCat=null; // Today tab: which category's games are expanded (null = none)
 
 // ── Formatting helpers ─────────────────────────────────────────────────────
@@ -1483,10 +1484,12 @@ function renderStatsBody(){
     if(bonusShown>3)ctrls.push(`<button class="btn" data-bonus-less>Show fewer</button>`);
     if(ctrls.length)board+=`<div class="row2" style="margin-top:8px;">${ctrls.join('')}</div>`;
   }
+  const lifeVal=lifetimeMode==='avg'?(st.session_count?st.lifetime_net/st.session_count:0):st.lifetime_net;
   body.innerHTML=`
     <div class="tile span2" style="text-align:center;">
-      <div class="t-label">Lifetime net</div>
-      <div class="t-val ${netClass(st.lifetime_net)}" style="font-size:40px;">${signMoney(st.lifetime_net)}</div>
+      <div class="na-label" style="justify-content:center;gap:10px;"><div class="t-label">${lifetimeMode==='avg'?'Average / session':'Lifetime net'}</div>
+        <span class="na-toggle" data-na="lifetime"><button type="button" class="${lifetimeMode==='net'?'sel':''}" data-na-mode="net">Net</button><button type="button" class="${lifetimeMode==='avg'?'sel':''}" data-na-mode="avg">Avg</button></span></div>
+      <div class="t-val ${netClass(lifeVal)}" style="font-size:40px;">${signMoney(lifeVal)}</div>
       <div class="muted" style="font-size:12px;">${st.session_count} sessions · ${money(st.total_bought_in)} in · ${money(st.total_cashed_out)} out</div>
     </div>
     <div class="tile-grid" style="margin-top:10px;">
@@ -1508,7 +1511,7 @@ function renderStatsBody(){
   const lb=body.querySelector('[data-bonus-less]');if(lb)lb.addEventListener('click',()=>{bonusShown=3;renderStatsBody();});
   body.querySelectorAll('[data-na] button').forEach(btn=>btn.addEventListener('click',()=>{
     const key=btn.closest('[data-na]').dataset.na,mode=btn.dataset.naMode;
-    if(key==='game')byGameMode=mode;else byCasinoMode=mode;renderStatsBody();}));
+    if(key==='game')byGameMode=mode;else if(key==='casino')byCasinoMode=mode;else lifetimeMode=mode;renderStatsBody();}));
 }
 // A "Net by game/casino" bar list, togglable between total Net and Average per session.
 function groupVal(g,mode){return mode==='avg'?(g.count?num(g.net)/g.count:0):num(g.net);}
