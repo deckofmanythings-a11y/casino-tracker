@@ -49,6 +49,10 @@
     background:var(--panel2);color:var(--muted);border:1px solid var(--gold-dim);border-right:none;}
   .na-toggle button:last-child{border-right:1px solid var(--gold-dim);}
   .na-toggle button.sel{background:var(--gold);color:#241c00;}
+  .na-ctrls{display:flex;align-items:center;gap:6px;flex:0 0 auto;}
+  .na-combine{font-family:inherit;font-size:10px;font-weight:800;letter-spacing:.5px;padding:3px 9px;cursor:pointer;
+    border-radius:8px;background:var(--panel2);color:var(--muted);border:1px solid var(--gold-dim);text-transform:uppercase;}
+  .na-combine.sel{background:var(--gold);color:#241c00;}
   .muted{color:var(--muted);} .faint{color:var(--faint);}
   .win{color:var(--win);} .loss{color:var(--loss);}
   .card{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:14px;box-shadow:var(--shadow);}
@@ -526,7 +530,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.8';
+const APP_VERSION='0.9.9';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -583,6 +587,7 @@ let bonusShown=3;
 let byGameMode='net'; // 'net' | 'avg' — Net-by-game display toggle
 let byCasinoMode='net';
 let lifetimeMode='net'; // 'net' | 'avg' — lifetime total vs per-session average
+let combineVariants=false; // Net-by-game: roll "Core — Variant" entries up into their core game
 let openCat=null; // Today tab: which category's games are expanded (null = none)
 
 // ── Formatting helpers ─────────────────────────────────────────────────────
@@ -1512,16 +1517,27 @@ function renderStatsBody(){
   body.querySelectorAll('[data-na] button').forEach(btn=>btn.addEventListener('click',()=>{
     const key=btn.closest('[data-na]').dataset.na,mode=btn.dataset.naMode;
     if(key==='game')byGameMode=mode;else if(key==='casino')byCasinoMode=mode;else lifetimeMode=mode;renderStatsBody();}));
+  const cb=body.querySelector('[data-na-combine]');if(cb)cb.addEventListener('click',()=>{combineVariants=!combineVariants;renderStatsBody();});
 }
 // A "Net by game/casino" bar list, togglable between total Net and Average per session.
 function groupVal(g,mode){return mode==='avg'?(g.count?num(g.net)/g.count:0):num(g.net);}
+// Roll entries up by core game name (the part before " — "), summing net + count.
+function combineByCore(list){
+  const m={},order=[];
+  list.forEach(g=>{const core=splitGameName(g.name)[0]||g.name;
+    if(!m[core]){m[core]={name:core,net:0,count:0};order.push(core);}
+    m[core].net+=num(g.net);m[core].count+=g.count||0;});
+  return order.map(k=>m[k]);
+}
 function netAvgSection(key,list,mode){
   if(!list||!list.length)return '';
-  const rows=list.map(g=>({name:g.name,val:groupVal(g,mode)})).sort((a,b)=>b.val-a.val);
+  const src=(key==='game'&&combineVariants)?combineByCore(list):list;
+  const rows=src.map(g=>({name:g.name,val:groupVal(g,mode)})).sort((a,b)=>b.val-a.val);
   const maxAbs=Math.max(1,...rows.map(r=>Math.abs(r.val)));
   const label=(mode==='avg'?'Average':'Net')+' by '+key;
   const tog=`<span class="na-toggle" data-na="${key}"><button type="button" class="${mode==='net'?'sel':''}" data-na-mode="net">Net</button><button type="button" class="${mode==='avg'?'sel':''}" data-na-mode="avg">Avg</button></span>`;
-  return `<div class="section-label na-label"><span>${label}</span>${tog}</div><div class="card">${rows.map(r=>barV(r.name,r.val,maxAbs)).join('')}</div>`;
+  const combine=key==='game'?`<button type="button" class="na-combine${combineVariants?' sel':''}" data-na-combine title="Combine variants of the same game">Combine</button>`:'';
+  return `<div class="section-label na-label"><span>${label}</span><span class="na-ctrls">${combine}${tog}</span></div><div class="card">${rows.map(r=>barV(r.name,r.val,maxAbs)).join('')}</div>`;
 }
 function barV(name,val,maxAbs){
   const w=Math.round(Math.abs(val)/maxAbs*100);
