@@ -530,7 +530,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.9';
+const APP_VERSION='0.9.10';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -1519,8 +1519,14 @@ function renderStatsBody(){
     if(key==='game')byGameMode=mode;else if(key==='casino')byCasinoMode=mode;else lifetimeMode=mode;renderStatsBody();}));
   const cb=body.querySelector('[data-na-combine]');if(cb)cb.addEventListener('click',()=>{combineVariants=!combineVariants;renderStatsBody();});
 }
-// A "Net by game/casino" bar list, togglable between total Net and Average per session.
-function groupVal(g,mode){return mode==='avg'?(g.count?num(g.net)/g.count:0):num(g.net);}
+// A "Net by game/casino" bar list, togglable between total Net and Average.
+// Game average is per session; casino average is per TRIP (a visit), so each uses
+// its own divisor. trip_count may be absent on a pre-deploy payload → fall back to count.
+function groupVal(g,mode,divKey){
+  if(mode!=='avg')return num(g.net);
+  let d=num(g[divKey||'count']);if(!d)d=num(g.count);
+  return d?num(g.net)/d:0;
+}
 // Roll entries up by core game name (the part before " — "), summing net + count.
 function combineByCore(list){
   const m={},order=[];
@@ -1532,7 +1538,8 @@ function combineByCore(list){
 function netAvgSection(key,list,mode){
   if(!list||!list.length)return '';
   const src=(key==='game'&&combineVariants)?combineByCore(list):list;
-  const rows=src.map(g=>({name:g.name,val:groupVal(g,mode)})).sort((a,b)=>b.val-a.val);
+  const divKey=key==='casino'?'trip_count':'count';
+  const rows=src.map(g=>({name:g.name,val:groupVal(g,mode,divKey)})).sort((a,b)=>b.val-a.val);
   const maxAbs=Math.max(1,...rows.map(r=>Math.abs(r.val)));
   const label=(mode==='avg'?'Average':'Net')+' by '+key;
   const tog=`<span class="na-toggle" data-na="${key}"><button type="button" class="${mode==='net'?'sel':''}" data-na-mode="net">Net</button><button type="button" class="${mode==='avg'?'sel':''}" data-na-mode="avg">Avg</button></span>`;
@@ -2052,14 +2059,16 @@ function mockSeed(){
       {id:'g4',name:'Blackjack',category:'table',default_denom:null,default_bet:null,default_buyin:300,sort_order:3,archived:false},
       {id:'g5',name:'Dbl Double Bonus',category:'video_poker',default_denom:0.25,default_bet:1.25,sort_order:4,archived:false},
     ],
-    trips:[{id:'t1',name:'Vegas — August',casino:'Bellagio',starting_bankroll:1000,start_date:dayAgo(2),started_at:dayAgo(2)+'T18:00:00',ended_at:null}],
+    trips:[{id:'t1',name:'Vegas — August',casino:'Bellagio',starting_bankroll:1000,start_date:dayAgo(2),started_at:dayAgo(2)+'T18:00:00',ended_at:null},
+      {id:'t2',name:'Aria — July',casino:'Aria',starting_bankroll:500,start_date:dayAgo(30),started_at:dayAgo(30)+'T18:00:00',ended_at:dayAgo(29)+'T12:00:00'},
+      {id:'t3',name:'Bellagio — June',casino:'Bellagio',starting_bankroll:800,start_date:dayAgo(60),started_at:dayAgo(60)+'T18:00:00',ended_at:dayAgo(59)+'T12:00:00'}],
     sessions:[
       withBonus(withBuyins(S({game_name:'Lightning Link',category:'slot',denom:1,bet_size:2.5,session_date:t,cash_out:null}),[200,100]),[{amount:250,base_bet:2.5},{amount:80,base_bet:2.5}]),
       withBonus(withBuyins(S({game_name:'Buffalo Gold',category:'slot',denom:0.01,bet_size:1.5,session_date:t,cash_out:420}),[100]),[{amount:1500,base_bet:1.5}]),
       withBuyins(S({game_name:'Blackjack',category:'table',session_date:t,cash_out:60}),[100]),
-      withBonus(withBuyins(S({game_name:'Dragon Link',category:'slot',denom:0.05,bet_size:5,session_date:dayAgo(1),cash_out:900}),[300]),[{amount:2000,base_bet:5}]),
-      withBuyins(S({game_name:'Blackjack',category:'table',session_date:dayAgo(1),cash_out:80,casino:'Bellagio'}),[200]),
-      withBonus(withBuyins(S({game_name:'Buffalo Gold',category:'slot',denom:0.01,bet_size:0.75,session_date:dayAgo(2),cash_out:40,casino:'Aria'}),[150]),[{amount:120,base_bet:0.75}]),
+      withBonus(withBuyins(S({game_name:'Dragon Link',category:'slot',denom:0.05,bet_size:5,session_date:dayAgo(1),cash_out:900,trip_id:'t3'}),[300]),[{amount:2000,base_bet:5}]),
+      withBuyins(S({game_name:'Blackjack',category:'table',session_date:dayAgo(1),cash_out:80,casino:'Bellagio',trip_id:'t3'}),[200]),
+      withBonus(withBuyins(S({game_name:'Buffalo Gold',category:'slot',denom:0.01,bet_size:0.75,session_date:dayAgo(2),cash_out:40,casino:'Aria',trip_id:'t2'}),[150]),[{amount:120,base_bet:0.75}]),
     ],
     stakes:[
       {id:'k1',account_id:'me',person:'Marcus',casino:'Thunder Valley',stake_amount:500,returned:700,notes:null,started_at:dayAgo(3)+'T18:00:00',ended_at:dayAgo(3)+'T23:00:00'},
@@ -2164,7 +2173,8 @@ function mockStats(){
   const sessions=mockDB.sessions;const closed=sessions.filter(s=>s.cash_out!=null);
   const net=s=>num(s.cash_out)-num(s.buy_in_total);
   const bonuses=sessions.flatMap(s=>s.bonuses.map(b=>({...b,ct_sessions:{game_name:s.game_name,casino:s.casino,session_date:s.session_date}})));
-  const group=(key)=>{const m={};closed.forEach(s=>{const k=s[key]||(key==='casino'?'Unspecified':'Unknown');(m[k]=m[k]||{name:k,net:0,count:0,bought_in:0});m[k].net+=net(s);m[k].count++;m[k].bought_in+=num(s.buy_in_total);});return Object.values(m).sort((a,b)=>b.net-a.net);};
+  const group=(key)=>{const m={};closed.forEach(s=>{const k=s[key]||(key==='casino'?'Unspecified':'Unknown');(m[k]=m[k]||{name:k,net:0,count:0,bought_in:0,_trips:new Set(),_solo:0});m[k].net+=net(s);m[k].count++;m[k].bought_in+=num(s.buy_in_total);if(s.trip_id)m[k]._trips.add(s.trip_id);else m[k]._solo++;});
+    return Object.values(m).map(v=>({name:v.name,net:v.net,count:v.count,bought_in:v.bought_in,trip_count:v._trips.size+v._solo})).sort((a,b)=>b.net-a.net);};
   const nets=closed.map(net);
   let biggest_bonus=null;bonuses.forEach(b=>{if(!biggest_bonus||num(b.multiple)>num(biggest_bonus.multiple))biggest_bonus=b;});
   return {lifetime_net:nets.reduce((a,b)=>a+b,0),total_bought_in:sessions.reduce((a,s)=>a+num(s.buy_in_total),0),
