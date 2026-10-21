@@ -43,6 +43,12 @@
   .screen.show{display:block;}
   h1,h2,h3{margin:0;}
   .section-label{font-size:12px;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted);margin:20px 2px 8px;}
+  .na-label{display:flex;align-items:center;justify-content:space-between;gap:10px;}
+  .na-toggle{display:inline-flex;flex:0 0 auto;border-radius:8px;overflow:hidden;}
+  .na-toggle button{font-family:inherit;font-size:10px;font-weight:800;letter-spacing:.5px;padding:3px 10px;cursor:pointer;
+    background:var(--panel2);color:var(--muted);border:1px solid var(--gold-dim);border-right:none;}
+  .na-toggle button:last-child{border-right:1px solid var(--gold-dim);}
+  .na-toggle button.sel{background:var(--gold);color:#241c00;}
   .muted{color:var(--muted);} .faint{color:var(--faint);}
   .win{color:var(--win);} .loss{color:var(--loss);}
   .card{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:14px;box-shadow:var(--shadow);}
@@ -520,7 +526,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.6';
+const APP_VERSION='0.9.7';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -574,6 +580,8 @@ let currentTab='today';
 let lastJackpots=[];
 let statsData=null;
 let bonusShown=3;
+let byGameMode='net'; // 'net' | 'avg' — Net-by-game display toggle
+let byCasinoMode='net';
 let openCat=null; // Today tab: which category's games are expanded (null = none)
 
 // ── Formatting helpers ─────────────────────────────────────────────────────
@@ -1464,8 +1472,6 @@ function renderStatsBody(){
   const st=statsData;if(!st)return;
   const body=document.getElementById('stats-body');
   const bb=st.biggest_bonus;
-  const maxAbs=Math.max(1,...st.by_game.map(g=>Math.abs(g.net)));
-  const casMax=Math.max(1,...st.by_casino.map(g=>Math.abs(g.net)));
   // Biggest-bonus leaderboard: reveal 3 → 10 → 20 … until the full list is shown.
   const tb=st.top_bonuses||[];
   const nShown=Math.min(bonusShown,tb.length);
@@ -1492,21 +1498,34 @@ function renderStatsBody(){
         <div class="muted" style="font-size:11px;">${st.bonus_count} total</div></div>
     </div>
     ${board}
-    ${st.by_game.length?`<div class="section-label">Net by game</div><div class="card">${st.by_game.map(g=>bar(g,maxAbs)).join('')}</div>`:''}
-    ${st.by_casino.length>0?`<div class="section-label">Net by casino</div><div class="card">${st.by_casino.map(g=>bar(g,casMax)).join('')}</div>`:''}
+    ${netAvgSection('game',st.by_game,byGameMode)}
+    ${netAvgSection('casino',st.by_casino,byCasinoMode)}
     ${st.jackpots.length?`<div class="section-label">W-2G hand pays</div>
       <button class="btn" style="margin-bottom:8px;" data-copy-jackpots>Copy list for taxes</button>
       ${st.jackpots.map(jpRow).join('')}`:''}
   `;
   const mb=body.querySelector('[data-bonus-more]');if(mb)mb.addEventListener('click',()=>{bonusShown=bonusShown===3?10:bonusShown+10;renderStatsBody();});
   const lb=body.querySelector('[data-bonus-less]');if(lb)lb.addEventListener('click',()=>{bonusShown=3;renderStatsBody();});
+  body.querySelectorAll('[data-na] button').forEach(btn=>btn.addEventListener('click',()=>{
+    const key=btn.closest('[data-na]').dataset.na,mode=btn.dataset.naMode;
+    if(key==='game')byGameMode=mode;else byCasinoMode=mode;renderStatsBody();}));
 }
-function bar(g,maxAbs){
-  const w=Math.round(Math.abs(g.net)/maxAbs*100);
-  const col=g.net>=0?'var(--win)':'var(--loss)';
-  return `<div class="bar-row"><span class="br-name">${esc(g.name)}</span>
+// A "Net by game/casino" bar list, togglable between total Net and Average per session.
+function groupVal(g,mode){return mode==='avg'?(g.count?num(g.net)/g.count:0):num(g.net);}
+function netAvgSection(key,list,mode){
+  if(!list||!list.length)return '';
+  const rows=list.map(g=>({name:g.name,val:groupVal(g,mode)})).sort((a,b)=>b.val-a.val);
+  const maxAbs=Math.max(1,...rows.map(r=>Math.abs(r.val)));
+  const label=(mode==='avg'?'Average':'Net')+' by '+key;
+  const tog=`<span class="na-toggle" data-na="${key}"><button type="button" class="${mode==='net'?'sel':''}" data-na-mode="net">Net</button><button type="button" class="${mode==='avg'?'sel':''}" data-na-mode="avg">Avg</button></span>`;
+  return `<div class="section-label na-label"><span>${label}</span>${tog}</div><div class="card">${rows.map(r=>barV(r.name,r.val,maxAbs)).join('')}</div>`;
+}
+function barV(name,val,maxAbs){
+  const w=Math.round(Math.abs(val)/maxAbs*100);
+  const col=val>=0?'var(--win)':'var(--loss)';
+  return `<div class="bar-row"><span class="br-name">${esc(name)}</span>
     <div class="bar-track"><div class="bar-fill" style="width:${w}%;background:${col};"></div></div>
-    <span class="br-val ${netClass(g.net)}">${signMoney(g.net)}</span></div>`;
+    <span class="br-val ${netClass(val)}">${signMoney(val)}</span></div>`;
 }
 function jpRow(j){
   const sess=j.ct_sessions||{};const date=sess.session_date?prettyDate(sess.session_date):'';
