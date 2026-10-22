@@ -536,7 +536,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.16';
+const APP_VERSION='0.9.17';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -591,10 +591,10 @@ let lastJackpots=[];
 let statsData=null;
 let bonusShown=3;
 let showDoneComps=false; // Comps list: used/expired are hidden by default, this reveals them
-let byGameMode='net'; // 'net' | 'avg' — Net-by-game display toggle
-let byCasinoMode='net';
-let lifetimeMode='net'; // 'net' | 'avg' — lifetime total vs per-session average
-let combineVariants=false; // Net-by-game: roll "Core — Variant" entries up into their core game
+let byGameMode='avg'; // 'net' | 'avg' — Net-by-game display toggle (defaults to Average)
+let byCasinoMode='avg';
+let lifetimeMode='avg'; // 'net' | 'avg' — lifetime total vs per-session average (defaults to Average)
+let combineVariants=true; // Net-by-game: roll "Core — Variant" entries up into their core game (on by default)
 let openCat=null; // Today tab: which category's games are expanded (null = none)
 
 // ── Formatting helpers ─────────────────────────────────────────────────────
