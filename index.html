@@ -258,6 +258,7 @@
   .cb-pill{flex:1 1 auto;min-width:96px;padding:11px 8px;border-radius:12px;background:var(--panel2);border:1px solid var(--gold-dim);
     color:var(--muted);font-size:13px;font-weight:700;white-space:nowrap;cursor:pointer;}
   .cb-pill.sel{background:var(--gold);color:#241c00;border-color:var(--gold-dim);}
+  .sc-cb{margin-top:12px;}
   .toggle-row{display:flex;align-items:center;justify-content:space-between;margin-top:14px;
     background:var(--panel2);border:1px solid var(--border);border-radius:12px;padding:11px 13px;}
   .toggle-row .tr-label{font-size:13px;}
@@ -535,7 +536,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.15';
+const APP_VERSION='0.9.16';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -939,14 +940,13 @@ function renderActiveCard(s){
     </div>
     ${bonuses.length?`<div class="bonus-list">${bonuses.map(b=>bonusRow(b)).join('')}</div>`:''}
     ${s.strategy?`<div class="sc-notes"><b style="font-style:normal;">Strategy:</b> ${esc(s.strategy)}</div>`:''}
-    ${crapsBonusLine(s)}
+    ${s.category==='bubble_craps'?`<div class="cb-row sc-cb" data-cardcb="${s.id}">
+      <button type="button" class="cb-pill${s.craps_small?' sel':''}" data-ck="craps_small">Smalls</button>
+      <button type="button" class="cb-pill${s.craps_all?' sel':''}" data-ck="craps_all">Make 'Em All</button>
+      <button type="button" class="cb-pill${s.craps_tall?' sel':''}" data-ck="craps_tall">Talls</button>
+    </div>`:''}
     ${s.notes?`<div class="sc-notes">“${esc(s.notes)}”</div>`:''}
   </div>`;
-}
-// Card line listing any hit craps side-bet bonuses (only the true ones), joined by · .
-function crapsBonusLine(s){
-  const hits=[s.craps_small&&'Smalls',s.craps_all&&"Make 'Em All",s.craps_tall&&'Talls'].filter(Boolean);
-  return hits.length?`<div class="sc-notes">🎲 Bonus: ${hits.join(' · ')}</div>`:'';
 }
 function bonusRow(b){
   return `<div class="bonus-row">
@@ -972,6 +972,14 @@ function bindActiveCards(){
   w.querySelectorAll('[data-bonus]').forEach(b=>b.addEventListener('click',()=>openBonusSheet(b.dataset.bonus)));
   w.querySelectorAll('[data-cashout]').forEach(b=>b.addEventListener('click',()=>openCashoutSheet(b.dataset.cashout)));
   w.querySelectorAll('[data-edit]').forEach(b=>b.addEventListener('click',()=>openEditSession(b.dataset.edit)));
+  // Craps side-bet pills on the active card — tap toggles + persists immediately (partial save).
+  w.querySelectorAll('[data-cardcb] [data-ck]').forEach(btn=>btn.addEventListener('click',async()=>{
+    if(btn.disabled)return;
+    const id=btn.closest('[data-cardcb]').dataset.cardcb,key=btn.dataset.ck,newVal=!btn.classList.contains('sel');
+    btn.classList.toggle('sel',newVal);btn.disabled=true; // optimistic
+    const ok=afterWrite(await api('ct-write',{action:'save-session',id,[key]:newVal}));
+    if(!ok){btn.classList.toggle('sel',!newVal);btn.disabled=false;} // revert on failure
+  }));
   w.querySelectorAll('[data-delbonus]').forEach(b=>b.addEventListener('click',async()=>{
     const r=await api('ct-write',{action:'delete-bonus',id:b.dataset.delbonus});afterWrite(r);}));
   w.querySelectorAll('[data-jptoggle]').forEach(el=>el.addEventListener('click',async()=>{
