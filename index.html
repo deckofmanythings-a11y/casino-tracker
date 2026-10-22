@@ -253,6 +253,11 @@
   .seg button{flex:1 1 auto;min-width:88px;padding:9px 6px;border-radius:10px;background:var(--panel2);border:1px solid var(--border);
     color:var(--muted);font-size:12px;font-weight:700;white-space:nowrap;}
   .seg button.sel{background:var(--gold);color:#241c00;border-color:var(--gold-dim);}
+  /* Craps bonus multi-select pills — independent toggles, not mutually exclusive like .seg */
+  .cb-row{display:flex;flex-wrap:wrap;gap:8px;}
+  .cb-pill{flex:1 1 auto;min-width:96px;padding:11px 8px;border-radius:12px;background:var(--panel2);border:1px solid var(--gold-dim);
+    color:var(--muted);font-size:13px;font-weight:700;white-space:nowrap;cursor:pointer;}
+  .cb-pill.sel{background:var(--gold);color:#241c00;border-color:var(--gold-dim);}
   .toggle-row{display:flex;align-items:center;justify-content:space-between;margin-top:14px;
     background:var(--panel2);border:1px solid var(--border);border-radius:12px;padding:11px 13px;}
   .toggle-row .tr-label{font-size:13px;}
@@ -530,7 +535,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.11';
+const APP_VERSION='0.9.12';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -933,8 +938,14 @@ function renderActiveCard(s){
     </div>
     ${bonuses.length?`<div class="bonus-list">${bonuses.map(b=>bonusRow(b)).join('')}</div>`:''}
     ${s.strategy?`<div class="sc-notes"><b style="font-style:normal;">Strategy:</b> ${esc(s.strategy)}</div>`:''}
+    ${crapsBonusLine(s)}
     ${s.notes?`<div class="sc-notes">“${esc(s.notes)}”</div>`:''}
   </div>`;
+}
+// Card line listing any hit craps side-bet bonuses (only the true ones), joined by · .
+function crapsBonusLine(s){
+  const hits=[s.craps_small&&'Smalls',s.craps_all&&"Make 'Em All",s.craps_tall&&'Talls'].filter(Boolean);
+  return hits.length?`<div class="sc-notes">🎲 Bonus: ${hits.join(' · ')}</div>`:'';
 }
 function bonusRow(b){
   return `<div class="bonus-row">
@@ -1062,6 +1073,29 @@ function applyStrategyUI(p,cat){
   if(lbl)lbl.textContent=bc?'Strategy Name (optional)':'Variant (optional)';
   if(inp)inp.placeholder=bc?'e.g. 3 Point Molly':'e.g. Happy & Prosperous';
   if(wrap)wrap.style.display=bc?'':'none';
+  // Craps side-bet "Bonus" multi-select (Smalls / Make 'Em All / Talls) shows only for bubble_craps.
+  const cbw=document.getElementById(p+'-crapsbonus-wrap');
+  if(cbw)cbw.style.display=bc?'':'none';
+}
+
+// Craps "Bonus" group markup: three independent toggle pills (Smalls / Make 'Em All / Talls).
+// `pre` is the sheet-scoped id prefix (f/e); `sess` optionally prefills checked state from a session.
+function crapsBonusMarkup(pre,sess){
+  const cells=[['small','Smalls','craps_small'],['all',"Make 'Em All",'craps_all'],['tall','Talls','craps_tall']];
+  return `<div id="${pre}-crapsbonus-wrap"><label class="field">Bonus</label>
+    <div class="cb-row">${cells.map(([k,lab,key])=>
+      `<button type="button" class="cb-pill${sess&&sess[key]?' sel':''}" data-cb="${k}">${lab}</button>`).join('')}</div></div>`;
+}
+// Read the three bonus booleans out of a sheet's pills, gated to bubble_craps.
+function readCrapsBonus(pre,cat){
+  const on=k=>{const el=document.querySelector('#'+pre+'-crapsbonus-wrap .cb-pill[data-cb="'+k+'"]');
+    return cat==='bubble_craps'&&!!el&&el.classList.contains('sel');};
+  return {craps_small:on('small'),craps_all:on('all'),craps_tall:on('tall')};
+}
+// Wire a sheet's bonus pills to toggle their own .sel (independent multi-select).
+function bindCrapsBonus(pre){
+  document.querySelectorAll('#'+pre+'-crapsbonus-wrap .cb-pill').forEach(b=>
+    b.addEventListener('click',()=>b.classList.toggle('sel')));
 }
 
 // ── New / edit session ──────────────────────────────────────────────────────
@@ -1083,6 +1117,7 @@ function openSessionSheet(game){
         <div><label class="field">Base bet ($/spin)</label><input id="f-bet" inputmode="decimal" placeholder="2.50" value="${g.default_bet??''}"></div>
       </div>
     </div>
+    ${crapsBonusMarkup('f',null)}
     <label class="field">Opening buy-in</label>
     <div class="money-input"><span class="dollar">$</span><input id="f-buyin" inputmode="decimal" placeholder="100" value="${g.default_buyin??''}"></div>
     <label class="field">Casino (optional)</label>
@@ -1097,6 +1132,7 @@ function openSessionSheet(game){
     enableCents(document.getElementById('f-denom'));enableCents(document.getElementById('f-bet'));
     applyCents(document.getElementById('f-buyin'),usesCents(selCat));
     applyStrategyUI('f',selCat);
+    bindCrapsBonus('f');
     document.querySelectorAll('#f-cat button').forEach(b=>b.addEventListener('click',()=>{
       selCat=b.dataset.cat;
       document.querySelectorAll('#f-cat button').forEach(x=>x.classList.toggle('sel',x===b));
@@ -1117,6 +1153,7 @@ function openSessionSheet(game){
         bet_size:isSlotty(selCat)?document.getElementById('f-bet').value:null,
         buy_in:document.getElementById('f-buyin').value||null,
         strategy:(selCat==='bubble_craps'?(document.getElementById('f-strategy').value.trim()||null):null),
+        ...readCrapsBonus('f',selCat),
         trip_id:state.active_trip?.id||null,session_date:state.today};
       const ok=afterWrite(await api('ct-write',payload));
       if(!ok){startBtn.disabled=false;startBtn.textContent='Start session';}
@@ -1138,6 +1175,7 @@ function openEditSession(id){
     <div class="seg" id="e-cat">${segMarkup(s.category)}</div>
     <div class="row2"><div><label class="field">Denomination</label><input id="e-denom" inputmode="decimal" value="${s.denom??''}"></div>
       <div><label class="field">Base bet</label><input id="e-bet" inputmode="decimal" value="${s.bet_size??''}"></div></div>
+    ${crapsBonusMarkup('e',s)}
     <label class="field">Casino</label>${casinoSelect('e-casino', s.casino||'')}
     <label class="field">Notes</label><textarea id="e-notes" placeholder="Anything worth remembering…">${esc(s.notes||'')}</textarea>
     ${isOpen(s)?'':`<label class="field">Cash-out</label><div class="money-input"><span class="dollar">$</span><input id="e-cashout" inputmode="decimal" value="${s.cash_out??''}"></div>`}
@@ -1153,6 +1191,7 @@ function openEditSession(id){
     enableCents(document.getElementById('e-denom'));enableCents(document.getElementById('e-bet'));
     applyCents(document.getElementById('e-cashout'),usesCents(selCat));
     applyStrategyUI('e',selCat);
+    bindCrapsBonus('e');
     // Bonus review: every bonus logged for this session, with its base-bet multiple.
     // Bonuses persist forever — this just surfaces them again after the session closed.
     if(isSlotty(s.category)){
@@ -1186,7 +1225,8 @@ function openEditSession(id){
       const p={action:'save-session',id:s.id,game_name:_vr?`${_nm} — ${_vr}`:_nm,
         category:selCat,denom:document.getElementById('e-denom').value,bet_size:document.getElementById('e-bet').value,
         casino:document.getElementById('e-casino').value.trim()||null,notes:document.getElementById('e-notes').value,
-        strategy:(selCat==='bubble_craps'?(document.getElementById('e-strategy').value.trim()||null):null)};
+        strategy:(selCat==='bubble_craps'?(document.getElementById('e-strategy').value.trim()||null):null),
+        ...readCrapsBonus('e',selCat)};
       const co=document.getElementById('e-cashout');if(co)p.cash_out=co.value;
       afterWrite(await api('ct-write',p));
     });
@@ -2070,7 +2110,7 @@ let mockDB=null;
 function mockSeed(){
   const t=todayLocal();
   const dayAgo=(n)=>{const d=new Date();d.setDate(d.getDate()-n);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
-  let sid=0;const S=(o)=>({id:'s'+(++sid),account_id:'me',trip_id:'t1',game_id:null,notes:null,strategy:null,started_at:o.session_date+'T12:00:00',
+  let sid=0;const S=(o)=>({id:'s'+(++sid),account_id:'me',trip_id:'t1',game_id:null,notes:null,strategy:null,craps_small:false,craps_all:false,craps_tall:false,started_at:o.session_date+'T12:00:00',
     buyins:[],bonuses:[],denom:null,bet_size:null,casino:'Bellagio',cash_out:null,...o});
   const withBuyins=(s,amts)=>{s.buyins=amts.map((a,i)=>({id:s.id+'b'+i,session_id:s.id,amount:a}));s.buy_in_total=amts.reduce((x,y)=>x+y,0);return s;};
   const withBonus=(s,list)=>{s.bonuses=list.map((b,i)=>({id:s.id+'x'+i,session_id:s.id,amount:b.amount,base_bet:b.base_bet,multiple:b.base_bet?b.amount/b.base_bet:null,is_jackpot:b.amount>=2000,machine_name:s.game_name}));return s;};
@@ -2091,7 +2131,7 @@ function mockSeed(){
       withBonus(withBuyins(S({game_name:'Lightning Link',category:'slot',denom:1,bet_size:2.5,session_date:t,cash_out:null}),[200,100]),[{amount:250,base_bet:2.5},{amount:80,base_bet:2.5}]),
       withBonus(withBuyins(S({game_name:'Buffalo Gold',category:'slot',denom:0.01,bet_size:1.5,session_date:t,cash_out:420}),[100]),[{amount:1500,base_bet:1.5}]),
       withBuyins(S({game_name:'Blackjack',category:'table',session_date:t,cash_out:60}),[100]),
-      withBuyins(S({game_name:'Craps — 3 Point Molly',category:'bubble_craps',session_date:t,cash_out:null,strategy:'Pass line with odds and two Come bets with odds at all times'}),[100]),
+      withBuyins(S({game_name:'Craps — 3 Point Molly',category:'bubble_craps',session_date:t,cash_out:null,strategy:'Pass line with odds and two Come bets with odds at all times',craps_small:true,craps_all:true}),[100]),
       withBonus(withBuyins(S({game_name:'Dragon Link',category:'slot',denom:0.05,bet_size:5,session_date:dayAgo(1),cash_out:900,trip_id:'t3'}),[300]),[{amount:2000,base_bet:5}]),
       withBuyins(S({game_name:'Blackjack',category:'table',session_date:dayAgo(1),cash_out:80,casino:'Bellagio',trip_id:'t3'}),[200]),
       withBonus(withBuyins(S({game_name:'Buffalo Gold',category:'slot',denom:0.01,bet_size:0.75,session_date:dayAgo(2),cash_out:40,casino:'Aria',trip_id:'t2'}),[150]),[{amount:120,base_bet:0.75}]),
@@ -2151,12 +2191,15 @@ function mockWrite(b){
       if('bet_size' in b)s.bet_size=b.bet_size===''?null:num(b.bet_size);
       if('notes' in b)s.notes=b.notes;
       if('strategy' in b)s.strategy=b.strategy;
+      if('craps_small' in b)s.craps_small=b.craps_small===true;
+      if('craps_all' in b)s.craps_all=b.craps_all===true;
+      if('craps_tall' in b)s.craps_tall=b.craps_tall===true;
       if('cash_out' in b)s.cash_out=b.cash_out===''||b.cash_out==null?null:num(b.cash_out);
     }else{
       if(b.client_key&&mockDB.sessions.some(s=>s.client_key===b.client_key))return; // idempotent
       const s={id:mockId('s'),account_id:'me',client_key:b.client_key||null,trip_id:b.trip_id||null,game_id:b.game_id||null,game_name:b.game_name||'Untitled',
       category:b.category||'slot',casino:b.casino||null,denom:b.denom?num(b.denom):null,bet_size:b.bet_size?num(b.bet_size):null,
-      notes:null,strategy:b.strategy??null,buy_in_total:0,cash_out:'cash_out' in b?(b.cash_out?num(b.cash_out):null):null,session_date:b.session_date||todayLocal(),
+      notes:null,strategy:b.strategy??null,craps_small:b.craps_small===true,craps_all:b.craps_all===true,craps_tall:b.craps_tall===true,buy_in_total:0,cash_out:'cash_out' in b?(b.cash_out?num(b.cash_out):null):null,session_date:b.session_date||todayLocal(),
       started_at:new Date().toISOString(),buyins:[],bonuses:[]};
       if(b.buy_in){s.buyins.push({id:mockId('b'),session_id:s.id,amount:num(b.buy_in)});mockRecompute(s);}
       mockDB.sessions.push(s);}
