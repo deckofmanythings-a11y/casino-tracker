@@ -535,7 +535,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.12';
+const APP_VERSION='0.9.13';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -1173,8 +1173,8 @@ function openEditSession(id){
     ${gameDatalists()}
     <label class="field">Type</label>
     <div class="seg" id="e-cat">${segMarkup(s.category)}</div>
-    <div class="row2"><div><label class="field">Denomination</label><input id="e-denom" inputmode="decimal" value="${s.denom??''}"></div>
-      <div><label class="field">Base bet</label><input id="e-bet" inputmode="decimal" value="${s.bet_size??''}"></div></div>
+    <div id="e-slotfields" style="${isSlotty(s.category)?'':'display:none'}"><div class="row2"><div><label class="field">Denomination</label><input id="e-denom" inputmode="decimal" value="${s.denom??''}"></div>
+      <div><label class="field">Base bet</label><input id="e-bet" inputmode="decimal" value="${s.bet_size??''}"></div></div></div>
     ${crapsBonusMarkup('e',s)}
     <label class="field">Casino</label>${casinoSelect('e-casino', s.casino||'')}
     <label class="field">Notes</label><textarea id="e-notes" placeholder="Anything worth remembering…">${esc(s.notes||'')}</textarea>
@@ -1218,12 +1218,13 @@ function openEditSession(id){
     }
     document.querySelectorAll('#e-cat button').forEach(b=>b.addEventListener('click',()=>{
       selCat=b.dataset.cat;document.querySelectorAll('#e-cat button').forEach(x=>x.classList.toggle('sel',x===b));
+      document.getElementById('e-slotfields').style.display=isSlotty(selCat)?'':'none';
       applyStrategyUI('e',selCat);
       applyCents(document.getElementById('e-cashout'),usesCents(selCat));}));
     document.getElementById('e-save').addEventListener('click',async()=>{
       const _nm=document.getElementById('e-name').value.trim(),_vr=document.getElementById('e-variant').value.trim();
       const p={action:'save-session',id:s.id,game_name:_vr?`${_nm} — ${_vr}`:_nm,
-        category:selCat,denom:document.getElementById('e-denom').value,bet_size:document.getElementById('e-bet').value,
+        category:selCat,denom:isSlotty(selCat)?document.getElementById('e-denom').value:null,bet_size:isSlotty(selCat)?document.getElementById('e-bet').value:null,
         casino:document.getElementById('e-casino').value.trim()||null,notes:document.getElementById('e-notes').value,
         strategy:(selCat==='bubble_craps'?(document.getElementById('e-strategy').value.trim()||null):null),
         ...readCrapsBonus('e',selCat)};
