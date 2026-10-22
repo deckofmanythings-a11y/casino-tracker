@@ -147,6 +147,11 @@
   .jackpot-badge{font-size:9px;font-weight:800;letter-spacing:.5px;background:var(--gold);color:#241c00;
     padding:2px 6px;border-radius:5px;text-transform:uppercase;}
   .sc-notes{font-size:12px;color:var(--muted);margin-top:10px;font-style:italic;}
+  .casino-note{margin-top:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+  .casino-note .cn-text{flex:1;min-width:0;font-size:12px;color:var(--muted);font-style:italic;}
+  .casino-note .cn-edit{flex:0 0 auto;background:none;border:none;cursor:pointer;font-size:15px;color:var(--gold);padding:2px 6px;line-height:1;}
+  .casino-note .cn-add{background:none;border:1px dashed var(--gold-dim);border-radius:9px;color:var(--muted);font-size:12px;font-weight:600;padding:6px 11px;cursor:pointer;}
+  .casino-note .cn-ta{width:100%;min-height:54px;}
 
   /* closed session rows */
   .sess-row{display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--border);
@@ -536,7 +541,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.19';
+const APP_VERSION='0.9.20';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -630,13 +635,34 @@ function casinoSelect(id,selected){
 }
 // The free-text note recorded for a casino (via the Casinos manager), or '' when none.
 function casinoNote(name){return (name&&(state.comp_casinos||[]).find(c=>c.casino===name)?.notes)||'';}
-// Fill a .sc-notes line (id=noteId) with the note for the casino currently chosen in selId,
-// and keep it in sync when the select changes. Used under the casino picker in both sheets.
-function wireCasinoNote(selId,noteId){
-  const sel=document.getElementById(selId),note=document.getElementById(noteId);
-  if(!sel||!note)return;
-  const upd=()=>{const t=casinoNote(sel.value);note.textContent=t;note.style.display=t?'':'none';};
-  upd();sel.addEventListener('change',upd);
+// Inline-editable casino note under the casino picker in a session sheet: shows the note (with a
+// ✎ to edit) or a "+ Note" affordance for the currently-chosen casino, and saves just the note
+// (partial set-casino-color, so the location colour/category are never touched) WITHOUT closing
+// the sheet. Re-renders on casino change.
+function wireCasinoNote(selId,wrapId){
+  const sel=document.getElementById(selId),wrap=document.getElementById(wrapId);
+  if(!sel||!wrap)return;
+  const render=(edit)=>{
+    const name=sel.value,note=casinoNote(name);
+    if(!name){wrap.innerHTML='';return;}
+    if(edit){
+      wrap.innerHTML=`<textarea class="cn-ta" placeholder="Note on ${esc(name)} — progressives, good/bad games, bubble/stadium craps…">${esc(note)}</textarea>`;
+      const ta=wrap.querySelector('.cn-ta');ta.focus();try{ta.setSelectionRange(ta.value.length,ta.value.length);}catch(_){}
+      ta.addEventListener('blur',async()=>{
+        const val=ta.value.trim();
+        if(val!==note){const r=await api('ct-write',{action:'set-casino-color',casino:name,notes:val});
+          if(r&&r.ok){applyBootstrap(r.bootstrap);cacheState();}}
+        render(false);
+      });
+    }else if(note){
+      wrap.innerHTML=`<span class="cn-text">${esc(note)}</span><button type="button" class="cn-edit" title="Edit note">✎</button>`;
+      wrap.querySelector('.cn-edit').addEventListener('click',()=>render(true));
+    }else{
+      wrap.innerHTML=`<button type="button" class="cn-add">+ Note on this casino</button>`;
+      wrap.querySelector('.cn-add').addEventListener('click',()=>render(true));
+    }
+  };
+  render(false);sel.addEventListener('change',()=>render(false));
 }
 function catIcon(c){return {slot:'🎰',video_poker:'🃏',bubble_craps:'🎲',table:'♠️',other:'✨'}[c]||'✨';}
 function catLabel(c){return {slot:'Slots',video_poker:'Video Poker',bubble_craps:'Table (Other)',table:'Table (Cards)',other:'Other'}[c]||'Other';}
@@ -1180,7 +1206,7 @@ function openSessionSheet(game){
     <div class="money-input"><span class="dollar">$</span><input id="f-buyin" inputmode="decimal" placeholder="100" value="${g.default_buyin??''}"></div>
     <label class="field">Casino (optional)</label>
     ${casinoSelect('f-casino', state.active_trip?.casino||'')}
-    <div class="sc-notes" id="f-casino-note"></div>
+    <div class="casino-note" id="f-casino-note"></div>
     <div class="sheet-actions">
       <button class="btn" data-close-sheet>Cancel</button>
       <button class="btn primary" id="f-start">Start session</button>
@@ -1237,7 +1263,7 @@ function openEditSession(id){
       <div><label class="field">Base bet</label><input id="e-bet" inputmode="decimal" value="${s.bet_size??''}"></div></div></div>
     ${crapsBonusMarkup('e',s)}
     <label class="field">Casino</label>${casinoSelect('e-casino', s.casino||'')}
-    <div class="sc-notes" id="e-casino-note"></div>
+    <div class="casino-note" id="e-casino-note"></div>
     <label class="field">Notes</label><textarea id="e-notes" placeholder="Anything worth remembering…">${esc(s.notes||'')}</textarea>
     ${isOpen(s)?'':`<label class="field">Cash-out</label><div class="money-input"><span class="dollar">$</span><input id="e-cashout" inputmode="decimal" value="${s.cash_out??''}"></div>`}
     ${isSlotty(s.category)?`<label class="field">Bonuses</label>
@@ -1845,7 +1871,7 @@ function renderComps(){
     <div class="comp-btn-row">
       <button class="btn primary" id="comp-new">+ New comp</button>
       <button class="btn" id="comp-today">Today’s comps</button>
-      <button class="btn" id="comp-colors">Casinos</button>
+      <button class="btn" id="comp-colors">Casino colours</button>
     </div>
   </div>`;
   if(!comps.length){
@@ -1993,7 +2019,7 @@ function openCompSheet(comp){
 }
 function openCasinoColorsSheet(){
   const PRESET='#a9801f';
-  openSheet('Casinos','<div id="cc-list"></div><div class="sheet-actions"><button class="btn primary" data-close-sheet>Done</button></div>',()=>{
+  openSheet('Casino colours','<div id="cc-list"></div><div class="sheet-actions"><button class="btn primary" data-close-sheet>Done</button></div>',()=>{
     const listEl=document.getElementById('cc-list');
     const casinoNames=()=>{const set=[];const add=n=>{if(n&&!set.includes(n))set.push(n);};
       CASINOS.forEach(add);(state.comps||[]).forEach(c=>add(c.casino));(state.comp_casinos||[]).forEach(c=>add(c.casino));return set;};
@@ -2003,17 +2029,15 @@ function openCasinoColorsSheet(){
         <input type="color" class="ccr-color" value="${esc(m.color||PRESET)}">
         <div class="ccr-name">${esc(name)}</div>
         <input type="text" class="ccr-cat" placeholder="Category" value="${esc(m.category||'')}">
-        <textarea class="ccr-notes" placeholder="Notes — progressives, good/bad games, bubble/stadium craps…">${esc(m.notes||'')}</textarea>
       </div>`;}).join('')||'<div class="empty">No casinos yet.</div>';
     // Save on colour change / category blur WITHOUT closing the sheet — apply the returned
     // bootstrap in place so the picker (and every other row) stays exactly where it is.
     listEl.querySelectorAll('.casino-color-row').forEach(row=>{
-      const name=row.dataset.casino,colorInp=row.querySelector('.ccr-color'),catInp=row.querySelector('.ccr-cat'),notesInp=row.querySelector('.ccr-notes');
-      const save=async()=>{const r=await api('ct-write',{action:'set-casino-color',casino:name,color:colorInp.value,category:catInp.value.trim()||null,notes:notesInp.value});
+      const name=row.dataset.casino,colorInp=row.querySelector('.ccr-color'),catInp=row.querySelector('.ccr-cat');
+      const save=async()=>{const r=await api('ct-write',{action:'set-casino-color',casino:name,color:colorInp.value,category:catInp.value.trim()||null});
         if(r&&r.ok){applyBootstrap(r.bootstrap);cacheState();if(currentTab==='comps')renderComps();}};
       colorInp.addEventListener('change',save);
       catInp.addEventListener('blur',save);
-      notesInp.addEventListener('blur',save);
     });
   });
 }
@@ -2325,8 +2349,10 @@ function mockWrite(b){
   else if(a==='unuse-comp'){const c=(mockDB.comps||[]).find(x=>x.id===b.id);if(c){if(c.single_use)c.used=false;
     else c.used_dates=(c.used_dates||[]).filter(d=>d!==b.date);}}
   else if(a==='set-casino-color'){mockDB.comp_casinos=mockDB.comp_casinos||[];const m=mockDB.comp_casinos.find(x=>x.casino===b.casino);
-    if(m){m.color=b.color;m.category=(b.category!==undefined)?b.category:(m.category??null);if('notes' in b)m.notes=b.notes;}
-    else mockDB.comp_casinos.push({casino:b.casino,color:b.color,category:b.category??null,notes:b.notes??null});}
+    // Partial merge: only fields present in the payload change (mirrors the server).
+    const cleanNote=v=>typeof v==='string'?(v.trim()||null):null;
+    if(m){if('color' in b)m.color=b.color;if('category' in b)m.category=b.category??null;if('notes' in b)m.notes=cleanNote(b.notes);}
+    else mockDB.comp_casinos.push({casino:b.casino,color:('color' in b)?b.color:'#c9a24e',category:b.category??null,notes:('notes' in b)?cleanNote(b.notes):null});}
 }
 function mockStats(){
   const sessions=mockDB.sessions;const closed=sessions.filter(s=>s.cash_out!=null);
