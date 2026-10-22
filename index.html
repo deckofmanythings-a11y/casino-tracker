@@ -536,7 +536,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.17';
+const APP_VERSION='0.9.18';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -591,10 +591,16 @@ let lastJackpots=[];
 let statsData=null;
 let bonusShown=3;
 let showDoneComps=false; // Comps list: used/expired are hidden by default, this reveals them
-let byGameMode='avg'; // 'net' | 'avg' — Net-by-game display toggle (defaults to Average)
-let byCasinoMode='avg';
-let lifetimeMode='avg'; // 'net' | 'avg' — lifetime total vs per-session average (defaults to Average)
-let combineVariants=true; // Net-by-game: roll "Core — Variant" entries up into their core game (on by default)
+// Stats view prefs (Net/Avg per section + Combine) persist per-viewer via localStorage so the
+// page reopens the way it was left. Default to Average + Combined when nothing (valid) is stored.
+let byGameMode,byCasinoMode,lifetimeMode,combineVariants;
+(function(){let o={};try{o=JSON.parse(localStorage.getItem('ct_stats_view')||'{}')||{};}catch(_){}
+  byGameMode=o.byGame==='net'?'net':'avg';
+  byCasinoMode=o.byCasino==='net'?'net':'avg';
+  lifetimeMode=o.lifetime==='net'?'net':'avg';
+  combineVariants=o.combine!==false;})();
+function saveStatsView(){try{localStorage.setItem('ct_stats_view',
+  JSON.stringify({byGame:byGameMode,byCasino:byCasinoMode,lifetime:lifetimeMode,combine:combineVariants}));}catch(_){}}
 let openCat=null; // Today tab: which category's games are expanded (null = none)
 
 // ── Formatting helpers ─────────────────────────────────────────────────────
@@ -1586,8 +1592,8 @@ function renderStatsBody(){
   const lb=body.querySelector('[data-bonus-less]');if(lb)lb.addEventListener('click',()=>{bonusShown=3;renderStatsBody();});
   body.querySelectorAll('[data-na] button').forEach(btn=>btn.addEventListener('click',()=>{
     const key=btn.closest('[data-na]').dataset.na,mode=btn.dataset.naMode;
-    if(key==='game')byGameMode=mode;else if(key==='casino')byCasinoMode=mode;else lifetimeMode=mode;renderStatsBody();}));
-  const cb=body.querySelector('[data-na-combine]');if(cb)cb.addEventListener('click',()=>{combineVariants=!combineVariants;renderStatsBody();});
+    if(key==='game')byGameMode=mode;else if(key==='casino')byCasinoMode=mode;else lifetimeMode=mode;saveStatsView();renderStatsBody();}));
+  const cb=body.querySelector('[data-na-combine]');if(cb)cb.addEventListener('click',()=>{combineVariants=!combineVariants;saveStatsView();renderStatsBody();});
 }
 // A "Net by game/casino" bar list, togglable between total Net and Average.
 // Game average is per session; casino average is per TRIP (a visit), so each uses
