@@ -536,7 +536,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.18';
+const APP_VERSION='0.9.19';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -577,7 +577,7 @@ function cacheState(){
   try{localStorage.setItem(CACHE_KEY,JSON.stringify({uid:account&&account.auth_user_id,account,bootstrap:{
     today:state.today,games:state.games,active_trip:state.active_trip,
     active_trip_totals:state.active_trip_totals,sessions:state.sessions,stakes:state.stakes,
-    comps:state.comps,comp_casinos:state.comp_casinos},ts:Date.now()}));}catch(_){}
+    comps:state.comps,comp_casinos:state.comp_casinos,recent_games:state.recent_games},ts:Date.now()}));}catch(_){}
 }
 function readCache(){try{const s=localStorage.getItem(CACHE_KEY);return s?JSON.parse(s):null;}catch(_){return null;}}
 
@@ -585,7 +585,7 @@ function readCache(){try{const s=localStorage.getItem(CACHE_KEY);return s?JSON.p
 let account=null;
 let userEmail=null;
 let booted=false;
-let state={today:todayLocal(),games:[],active_trip:null,active_trip_totals:null,sessions:[],stakes:[],comps:[],comp_casinos:[]};
+let state={today:todayLocal(),games:[],active_trip:null,active_trip_totals:null,sessions:[],stakes:[],comps:[],comp_casinos:[],recent_games:[]};
 let currentTab='today';
 let lastJackpots=[];
 let statsData=null;
@@ -602,6 +602,7 @@ let byGameMode,byCasinoMode,lifetimeMode,combineVariants;
 function saveStatsView(){try{localStorage.setItem('ct_stats_view',
   JSON.stringify({byGame:byGameMode,byCasino:byCasinoMode,lifetime:lifetimeMode,combine:combineVariants}));}catch(_){}}
 let openCat=null; // Today tab: which category's games are expanded (null = none)
+let recentResolved=[]; // Today tab: resolved game objects for the "Recently played" chips (data-recent index into this)
 
 // ── Formatting helpers ─────────────────────────────────────────────────────
 function todayLocal(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
@@ -626,6 +627,16 @@ function casinoSelect(id,selected){
   const list=(sel&&!CASINOS.includes(sel))?[sel,...CASINOS]:CASINOS;
   return `<select id="${id}"><option value=""${sel?'':' selected'}>— Select casino —</option>`+
     list.map(c=>`<option value="${esc(c)}"${c===sel?' selected':''}>${esc(c)}</option>`).join('')+`</select>`;
+}
+// The free-text note recorded for a casino (via the Casinos manager), or '' when none.
+function casinoNote(name){return (name&&(state.comp_casinos||[]).find(c=>c.casino===name)?.notes)||'';}
+// Fill a .sc-notes line (id=noteId) with the note for the casino currently chosen in selId,
+// and keep it in sync when the select changes. Used under the casino picker in both sheets.
+function wireCasinoNote(selId,noteId){
+  const sel=document.getElementById(selId),note=document.getElementById(noteId);
+  if(!sel||!note)return;
+  const upd=()=>{const t=casinoNote(sel.value);note.textContent=t;note.style.display=t?'':'none';};
+  upd();sel.addEventListener('change',upd);
 }
 function catIcon(c){return {slot:'🎰',video_poker:'🃏',bubble_craps:'🎲',table:'♠️',other:'✨'}[c]||'✨';}
 function catLabel(c){return {slot:'Slots',video_poker:'Video Poker',bubble_craps:'Table (Other)',table:'Table (Cards)',other:'Other'}[c]||'Other';}
@@ -798,7 +809,7 @@ async function doSignOut(){
   try{await sb.auth.signOut();}catch(_){}
   try{localStorage.removeItem(CACHE_KEY);}catch(_){}
   account=null;booted=false;userEmail=null;
-  state={today:todayLocal(),games:[],active_trip:null,active_trip_totals:null,sessions:[],stakes:[],comps:[],comp_casinos:[]};
+  state={today:todayLocal(),games:[],active_trip:null,active_trip_totals:null,sessions:[],stakes:[],comps:[],comp_casinos:[],recent_games:[]};
   $('app').classList.remove('show');
   showAuthScreen('login');
 }
@@ -859,6 +870,24 @@ function favChip(g){
     <div class="fc-name">${esc(g.name)}</div>
     <div class="fc-sub">${sub}</div></div>`;
 }
+// Like favChip but keyed by position (data-recent) instead of catalog id — recents can be
+// ad-hoc (synthesized, no id), so favChip's id-lookup click path won't resolve them.
+function recentChip(g,i){
+  const art=g.image_url&&g.image_url.indexOf('mock://')!==0;
+  const sub=g.variant?esc(g.variant):(g.default_bet!=null?money(g.default_bet)+' bet':catLabel(g.category));
+  if(art){
+    const attrs=g.art_bg
+      ?`style="background-image:url(&quot;${g.image_url}&quot;);background-color:${esc(g.art_bg)};"`
+      :`data-arturl="${esc(g.image_url)}" style="background-image:url(&quot;${g.image_url}&quot;)"`;
+    return `<div class="fast-chip has-art" data-recent="${i}" ${attrs}>
+      <div class="fc-scrim"></div>
+      <div class="fc-text"><div class="fc-name">${esc(g.name)}</div><div class="fc-sub">${sub}</div></div></div>`;
+  }
+  return `<div class="fast-chip" data-recent="${i}">
+    <div class="fc-cat">${catIcon(g.category)}</div>
+    <div class="fc-name">${esc(g.name)}</div>
+    <div class="fc-sub">${sub}</div></div>`;
+}
 function renderToday(){
   const sessions=state.sessions||[];
   const dayIn=sessions.reduce((s,x)=>s+num(x.buy_in_total),0);
@@ -897,6 +926,17 @@ function renderToday(){
     const gs=games.filter(g=>g.category===openCat);
     panel=gs.map(favChip).join('')+
       `<div class="fast-chip new" data-game="__new" data-newcat="${openCat}">+ New</div>`;
+  }else{
+    // Default (no category expanded): quick-start chips for the last games played.
+    // Resolve each to a real catalog game (richest prefill) or synthesize an ad-hoc one.
+    recentResolved=(state.recent_games||[]).map(r=>{
+      if(r.game_id){const cat=games.find(g=>g.id===r.game_id);if(cat)return cat;}
+      const [core,variant]=splitGameName(r.name);
+      return {name:core,variant:variant||null,category:r.category,default_denom:r.default_denom,default_bet:r.default_bet};
+    });
+    if(recentResolved.length)
+      panel=`<div class="muted" style="grid-column:1/-1;font-size:11px;margin:2px 0 -2px;">Recently played</div>`+
+        recentResolved.map((g,i)=>recentChip(g,i)).join('');
   }
   fs.innerHTML=`<div class="cat-row">${catRow}</div><div class="cat-games" id="cat-games">${panel}</div>`;
   paintArtBgs(fs);
@@ -907,6 +947,9 @@ function renderToday(){
     if(el.dataset.game==='__new')openSessionSheet(el.dataset.newcat?{category:el.dataset.newcat}:undefined);
     else openSessionSheet(games.find(g=>g.id===el.dataset.game));
   }));
+  // Recents can be ad-hoc (no catalog id), so resolve by position into recentResolved.
+  fs.querySelectorAll('#cat-games [data-recent]').forEach(el=>el.addEventListener('click',()=>
+    openSessionSheet(recentResolved[+el.dataset.recent])));
 
   // Most-recent first (sessions arrive started_at ascending from the server).
   const byNewest=(a,b)=>String(b.started_at||'').localeCompare(String(a.started_at||''));
@@ -1137,12 +1180,14 @@ function openSessionSheet(game){
     <div class="money-input"><span class="dollar">$</span><input id="f-buyin" inputmode="decimal" placeholder="100" value="${g.default_buyin??''}"></div>
     <label class="field">Casino (optional)</label>
     ${casinoSelect('f-casino', state.active_trip?.casino||'')}
+    <div class="sc-notes" id="f-casino-note"></div>
     <div class="sheet-actions">
       <button class="btn" data-close-sheet>Cancel</button>
       <button class="btn primary" id="f-start">Start session</button>
     </div>
   `,()=>{
     let selCat=cat;
+    wireCasinoNote('f-casino','f-casino-note');
     const clientKey=genKey(); // one idempotency key per opened sheet — a double-tap/retry can't duplicate
     enableCents(document.getElementById('f-denom'));enableCents(document.getElementById('f-bet'));
     applyCents(document.getElementById('f-buyin'),usesCents(selCat));
@@ -1192,6 +1237,7 @@ function openEditSession(id){
       <div><label class="field">Base bet</label><input id="e-bet" inputmode="decimal" value="${s.bet_size??''}"></div></div></div>
     ${crapsBonusMarkup('e',s)}
     <label class="field">Casino</label>${casinoSelect('e-casino', s.casino||'')}
+    <div class="sc-notes" id="e-casino-note"></div>
     <label class="field">Notes</label><textarea id="e-notes" placeholder="Anything worth remembering…">${esc(s.notes||'')}</textarea>
     ${isOpen(s)?'':`<label class="field">Cash-out</label><div class="money-input"><span class="dollar">$</span><input id="e-cashout" inputmode="decimal" value="${s.cash_out??''}"></div>`}
     ${isSlotty(s.category)?`<label class="field">Bonuses</label>
@@ -1203,6 +1249,7 @@ function openEditSession(id){
     </div>
   `,()=>{
     let selCat=s.category;
+    wireCasinoNote('e-casino','e-casino-note');
     enableCents(document.getElementById('e-denom'));enableCents(document.getElementById('e-bet'));
     applyCents(document.getElementById('e-cashout'),usesCents(selCat));
     applyStrategyUI('e',selCat);
@@ -1798,7 +1845,7 @@ function renderComps(){
     <div class="comp-btn-row">
       <button class="btn primary" id="comp-new">+ New comp</button>
       <button class="btn" id="comp-today">Today’s comps</button>
-      <button class="btn" id="comp-colors">Casino colours</button>
+      <button class="btn" id="comp-colors">Casinos</button>
     </div>
   </div>`;
   if(!comps.length){
@@ -1946,7 +1993,7 @@ function openCompSheet(comp){
 }
 function openCasinoColorsSheet(){
   const PRESET='#a9801f';
-  openSheet('Casino colours','<div id="cc-list"></div><div class="sheet-actions"><button class="btn primary" data-close-sheet>Done</button></div>',()=>{
+  openSheet('Casinos','<div id="cc-list"></div><div class="sheet-actions"><button class="btn primary" data-close-sheet>Done</button></div>',()=>{
     const listEl=document.getElementById('cc-list');
     const casinoNames=()=>{const set=[];const add=n=>{if(n&&!set.includes(n))set.push(n);};
       CASINOS.forEach(add);(state.comps||[]).forEach(c=>add(c.casino));(state.comp_casinos||[]).forEach(c=>add(c.casino));return set;};
@@ -1956,15 +2003,17 @@ function openCasinoColorsSheet(){
         <input type="color" class="ccr-color" value="${esc(m.color||PRESET)}">
         <div class="ccr-name">${esc(name)}</div>
         <input type="text" class="ccr-cat" placeholder="Category" value="${esc(m.category||'')}">
+        <textarea class="ccr-notes" placeholder="Notes — progressives, good/bad games, bubble/stadium craps…">${esc(m.notes||'')}</textarea>
       </div>`;}).join('')||'<div class="empty">No casinos yet.</div>';
     // Save on colour change / category blur WITHOUT closing the sheet — apply the returned
     // bootstrap in place so the picker (and every other row) stays exactly where it is.
     listEl.querySelectorAll('.casino-color-row').forEach(row=>{
-      const name=row.dataset.casino,colorInp=row.querySelector('.ccr-color'),catInp=row.querySelector('.ccr-cat');
-      const save=async()=>{const r=await api('ct-write',{action:'set-casino-color',casino:name,color:colorInp.value,category:catInp.value.trim()||null});
+      const name=row.dataset.casino,colorInp=row.querySelector('.ccr-color'),catInp=row.querySelector('.ccr-cat'),notesInp=row.querySelector('.ccr-notes');
+      const save=async()=>{const r=await api('ct-write',{action:'set-casino-color',casino:name,color:colorInp.value,category:catInp.value.trim()||null,notes:notesInp.value});
         if(r&&r.ok){applyBootstrap(r.bootstrap);cacheState();if(currentTab==='comps')renderComps();}};
       colorInp.addEventListener('change',save);
       catInp.addEventListener('blur',save);
+      notesInp.addEventListener('blur',save);
     });
   });
 }
@@ -2182,9 +2231,9 @@ function mockSeed(){
       {id:'cp3',person:'Son',casino:'Cache Creek',title:'$20 match play',notes:null,single_use:false,valid_from:null,valid_to:null,dow:[6],used:false,used_dates:[],created_at:t+'T00:00:00'},
     ],
     comp_casinos:[
-      {casino:'Thunder Valley',color:'#c0392b',category:'Sacramento'},
-      {casino:'Sky River',color:'#2f80ed',category:'Sacramento'},
-      {casino:'Cache Creek',color:'#27ae60',category:'Capay'},
+      {casino:'Thunder Valley',color:'#c0392b',category:'Sacramento',notes:'$2 Progressive on UTH · has Bubble craps'},
+      {casino:'Sky River',color:'#2f80ed',category:'Sacramento',notes:null},
+      {casino:'Cache Creek',color:'#27ae60',category:'Capay',notes:null},
     ],
   };
 }
@@ -2198,8 +2247,13 @@ function mockBootstrap(today){
     const ts=mockDB.sessions.filter(s=>!st||(s.started_at||'')>=st);
     const buyins=ts.reduce((x,s)=>x+num(s.buy_in_total),0),cashouts=ts.reduce((x,s)=>x+num(s.cash_out),0);
     active_trip_totals={buyins,cashouts,net:cashouts-buyins,remaining:num(active_trip.starting_bankroll)-buyins+cashouts};}
+  // Last 6 DISTINCT games played (by game_name), newest first.
+  const recent_games=[];const seenGame=new Set();
+  mockDB.sessions.slice().sort((a,b)=>String(b.started_at||'').localeCompare(String(a.started_at||''))).forEach(s=>{
+    if(recent_games.length>=6||seenGame.has(s.game_name))return;seenGame.add(s.game_name);
+    recent_games.push({name:s.game_name,category:s.category,game_id:s.game_id,default_denom:s.denom,default_bet:s.bet_size});});
   return {today,games,active_trip,active_trip_totals,sessions,stakes:(mockDB.stakes||[]).slice(),
-    comps:(mockDB.comps||[]).slice(),comp_casinos:(mockDB.comp_casinos||[]).slice()};
+    comps:(mockDB.comps||[]).slice(),comp_casinos:(mockDB.comp_casinos||[]).slice(),recent_games};
 }
 function mockRecompute(s){s.buy_in_total=s.buyins.reduce((x,b)=>x+num(b.amount),0);}
 function mockId(p){return p+Math.random().toString(36).slice(2,8);}
@@ -2271,8 +2325,8 @@ function mockWrite(b){
   else if(a==='unuse-comp'){const c=(mockDB.comps||[]).find(x=>x.id===b.id);if(c){if(c.single_use)c.used=false;
     else c.used_dates=(c.used_dates||[]).filter(d=>d!==b.date);}}
   else if(a==='set-casino-color'){mockDB.comp_casinos=mockDB.comp_casinos||[];const m=mockDB.comp_casinos.find(x=>x.casino===b.casino);
-    if(m){m.color=b.color;m.category=(b.category!==undefined)?b.category:(m.category??null);}
-    else mockDB.comp_casinos.push({casino:b.casino,color:b.color,category:b.category??null});}
+    if(m){m.color=b.color;m.category=(b.category!==undefined)?b.category:(m.category??null);if('notes' in b)m.notes=b.notes;}
+    else mockDB.comp_casinos.push({casino:b.casino,color:b.color,category:b.category??null,notes:b.notes??null});}
 }
 function mockStats(){
   const sessions=mockDB.sessions;const closed=sessions.filter(s=>s.cash_out!=null);
