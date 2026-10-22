@@ -535,7 +535,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.14';
+const APP_VERSION='0.9.15';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -589,6 +589,7 @@ let currentTab='today';
 let lastJackpots=[];
 let statsData=null;
 let bonusShown=3;
+let showDoneComps=false; // Comps list: used/expired are hidden by default, this reveals them
 let byGameMode='net'; // 'net' | 'avg' — Net-by-game display toggle
 let byCasinoMode='net';
 let lifetimeMode='net'; // 'net' | 'avg' — lifetime total vs per-session average
@@ -1766,6 +1767,13 @@ function compStatus(comp){
   if(last&&last<today) return {label:'Expired',cls:'done'};
   return {label:'',cls:''};
 }
+// A comp that's done with: used up, or fully past (nothing available today or ahead).
+function compDone(comp){
+  if(comp.single_use&&comp.used) return true;
+  if(compAvailable(comp,state.today)) return false;
+  const next=compNextDate(comp);
+  return !(/^\d{4}-/.test(next)&&next>state.today);
+}
 function renderComps(){
   const body=document.getElementById('comps-body');
   const comps=state.comps||[];
@@ -1782,12 +1790,20 @@ function renderComps(){
   if(!comps.length){
     html+=`<div class="empty">No comps yet. Add the offers you and your family have.</div>`;
   }else{
-    compPersons(comps).forEach(person=>{
-      html+=`<div class="section-label">${esc(person)}</div>`;
-      html+=comps.filter(c=>(c.person||'—')===person)
+    // Used/expired comps are hidden by default so the list stays current; a toggle reveals
+    // them (e.g. to un-use one marked by mistake). Nothing is deleted.
+    const active=comps.filter(c=>!compDone(c)), done=comps.filter(compDone);
+    const byPerson=list=>compPersons(list).map(person=>
+      `<div class="section-label">${esc(person)}</div>`+
+      list.filter(c=>(c.person||'—')===person)
         .slice().sort((a,b)=>{const ka=compNextDate(a),kb=compNextDate(b);return ka<kb?-1:ka>kb?1:0;})
-        .map(compRowHtml).join('');
-    });
+        .map(compRowHtml).join('')).join('');
+    html+= active.length ? byPerson(active)
+      : `<div class="empty">No active comps${done.length?' — only used or expired ones remain.':'.'}</div>`;
+    if(done.length){
+      html+=`<button class="btn" data-comp-donetoggle style="margin-top:14px;width:100%;font-size:12px;">${showDoneComps?'Hide':'Show'} ${done.length} used / expired</button>`;
+      if(showDoneComps) html+=`<div style="opacity:.6;">${byPerson(done)}</div>`;
+    }
   }
   body.innerHTML=html;
   document.getElementById('comp-new').addEventListener('click',()=>openCompSheet());
@@ -1795,6 +1811,8 @@ function renderComps(){
   document.getElementById('comp-colors').addEventListener('click',()=>openCasinoColorsSheet());
   body.querySelectorAll('[data-comp]').forEach(el=>el.addEventListener('click',()=>{
     const c=(state.comps||[]).find(x=>x.id===el.dataset.comp);if(c)openCompSheet(c);}));
+  const dt=body.querySelector('[data-comp-donetoggle]');
+  if(dt)dt.addEventListener('click',()=>{showDoneComps=!showDoneComps;renderComps();});
 }
 function compRowHtml(c){
   const stt=compStatus(c);
