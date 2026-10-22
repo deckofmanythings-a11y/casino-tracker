@@ -535,7 +535,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.13';
+const APP_VERSION='0.9.14';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -1704,7 +1704,9 @@ function compEligLabel(comp){ // short human summary, e.g. "Tuesdays", "Sep 20�
 // own one-time comp, consumed independently.
 function isoDate(dt){return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;}
 function periodKey(dt,freq){const wd=dt.getDay();const d=new Date(dt);
-  const back=freq==='weekend'?(wd===5?0:wd===6?1:wd===0?2:0):((wd+6)%7); // weekend->Friday, weekly->Monday
+  // weekend -> roll back to Friday; weekly -> roll back to Sunday (the week starts Sunday, so a
+  // Sun–Fri offer is ONE period: using it Sunday consumes it for that whole week).
+  const back=freq==='weekend'?(wd===5?0:wd===6?1:wd===0?2:0):wd;
   d.setDate(d.getDate()-back);return isoDate(d);}
 function expandComps(base,freq,dowSet,from,to){
   if(!from||!to)return [];
