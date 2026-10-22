@@ -530,7 +530,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.10';
+const APP_VERSION='0.9.11';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -932,6 +932,7 @@ function renderActiveCard(s){
       <button class="btn primary" data-cashout="${s.id}">Cash out</button>
     </div>
     ${bonuses.length?`<div class="bonus-list">${bonuses.map(b=>bonusRow(b)).join('')}</div>`:''}
+    ${s.strategy?`<div class="sc-notes"><b style="font-style:normal;">Strategy:</b> ${esc(s.strategy)}</div>`:''}
     ${s.notes?`<div class="sc-notes">“${esc(s.notes)}”</div>`:''}
   </div>`;
 }
@@ -1052,6 +1053,17 @@ function afterWrite(resp){
 function segMarkup(sel){return CAT_ORDER.map(c=>
   `<button type="button" class="${c===sel?'sel':''}" data-cat="${c}">${catIcon(c)} ${catLabel(c)}</button>`).join('');}
 
+// Table (Other) (bubble_craps) relabels the Variant field as "Strategy Name" and
+// reveals a free-text Strategy box; every other category keeps "Variant" + hides it.
+// Given a form prefix (f/e/g) and the live category, syncs label + placeholder + wrap.
+function applyStrategyUI(p,cat){
+  const bc=cat==='bubble_craps';
+  const lbl=document.getElementById(p+'-variant-label'),inp=document.getElementById(p+'-variant'),wrap=document.getElementById(p+'-strategy-wrap');
+  if(lbl)lbl.textContent=bc?'Strategy Name (optional)':'Variant (optional)';
+  if(inp)inp.placeholder=bc?'e.g. 3 Point Molly':'e.g. Happy & Prosperous';
+  if(wrap)wrap.style.display=bc?'':'none';
+}
+
 // ── New / edit session ──────────────────────────────────────────────────────
 function openSessionSheet(game){
   const g=game||{};
@@ -1059,8 +1071,9 @@ function openSessionSheet(game){
   openSheet(g.name?('Start: '+g.name):'New session',`
     <label class="field">Name / Core game</label>
     <input id="f-name" placeholder="e.g. Lightning Link" value="${esc(g.name||'')}" list="dl-cores" autocomplete="off">
-    <label class="field">Variant (optional)</label>
+    <label class="field" id="f-variant-label">Variant (optional)</label>
     <input id="f-variant" placeholder="e.g. Happy &amp; Prosperous" value="${esc(g.variant||'')}" list="dl-variants" autocomplete="off">
+    <div id="f-strategy-wrap"><label class="field">Strategy (optional)</label><textarea id="f-strategy" placeholder="e.g. Pass line with odds and two Come bets with odds at all times">${esc(g.strategy||'')}</textarea></div>
     ${gameDatalists()}
     <label class="field">Type</label>
     <div class="seg" id="f-cat">${segMarkup(cat)}</div>
@@ -1083,10 +1096,12 @@ function openSessionSheet(game){
     const clientKey=genKey(); // one idempotency key per opened sheet — a double-tap/retry can't duplicate
     enableCents(document.getElementById('f-denom'));enableCents(document.getElementById('f-bet'));
     applyCents(document.getElementById('f-buyin'),usesCents(selCat));
+    applyStrategyUI('f',selCat);
     document.querySelectorAll('#f-cat button').forEach(b=>b.addEventListener('click',()=>{
       selCat=b.dataset.cat;
       document.querySelectorAll('#f-cat button').forEach(x=>x.classList.toggle('sel',x===b));
       document.getElementById('f-slotfields').style.display=isSlotty(selCat)?'':'none';
+      applyStrategyUI('f',selCat);
       applyCents(document.getElementById('f-buyin'),usesCents(selCat));
     }));
     const startBtn=document.getElementById('f-start');
@@ -1101,6 +1116,7 @@ function openSessionSheet(game){
         denom:isSlotty(selCat)?document.getElementById('f-denom').value:null,
         bet_size:isSlotty(selCat)?document.getElementById('f-bet').value:null,
         buy_in:document.getElementById('f-buyin').value||null,
+        strategy:(selCat==='bubble_craps'?(document.getElementById('f-strategy').value.trim()||null):null),
         trip_id:state.active_trip?.id||null,session_date:state.today};
       const ok=afterWrite(await api('ct-write',payload));
       if(!ok){startBtn.disabled=false;startBtn.textContent='Start session';}
@@ -1114,8 +1130,9 @@ function openEditSession(id){
   openSheet('Edit session',`
     <label class="field">Name / Core game</label>
     <input id="e-name" value="${esc(eCore)}" list="dl-cores" autocomplete="off">
-    <label class="field">Variant (optional)</label>
+    <label class="field" id="e-variant-label">Variant (optional)</label>
     <input id="e-variant" value="${esc(eVariant)}" list="dl-variants" autocomplete="off">
+    <div id="e-strategy-wrap"><label class="field">Strategy (optional)</label><textarea id="e-strategy" placeholder="e.g. Pass line with odds and two Come bets with odds at all times">${esc(s.strategy||'')}</textarea></div>
     ${gameDatalists()}
     <label class="field">Type</label>
     <div class="seg" id="e-cat">${segMarkup(s.category)}</div>
@@ -1135,6 +1152,7 @@ function openEditSession(id){
     let selCat=s.category;
     enableCents(document.getElementById('e-denom'));enableCents(document.getElementById('e-bet'));
     applyCents(document.getElementById('e-cashout'),usesCents(selCat));
+    applyStrategyUI('e',selCat);
     // Bonus review: every bonus logged for this session, with its base-bet multiple.
     // Bonuses persist forever — this just surfaces them again after the session closed.
     if(isSlotty(s.category)){
@@ -1161,12 +1179,14 @@ function openEditSession(id){
     }
     document.querySelectorAll('#e-cat button').forEach(b=>b.addEventListener('click',()=>{
       selCat=b.dataset.cat;document.querySelectorAll('#e-cat button').forEach(x=>x.classList.toggle('sel',x===b));
+      applyStrategyUI('e',selCat);
       applyCents(document.getElementById('e-cashout'),usesCents(selCat));}));
     document.getElementById('e-save').addEventListener('click',async()=>{
       const _nm=document.getElementById('e-name').value.trim(),_vr=document.getElementById('e-variant').value.trim();
       const p={action:'save-session',id:s.id,game_name:_vr?`${_nm} — ${_vr}`:_nm,
         category:selCat,denom:document.getElementById('e-denom').value,bet_size:document.getElementById('e-bet').value,
-        casino:document.getElementById('e-casino').value.trim()||null,notes:document.getElementById('e-notes').value};
+        casino:document.getElementById('e-casino').value.trim()||null,notes:document.getElementById('e-notes').value,
+        strategy:(selCat==='bubble_craps'?(document.getElementById('e-strategy').value.trim()||null):null)};
       const co=document.getElementById('e-cashout');if(co)p.cash_out=co.value;
       afterWrite(await api('ct-write',p));
     });
@@ -1964,7 +1984,8 @@ function openGameSheet(game){
   const g=game||{};const cat=g.category||'slot';
   openSheet(game?'Edit game':'Add a game',`
     <label class="field">Name / Core game</label><input id="g-name" placeholder="Dragon Link" value="${esc(g.name||'')}" list="dl-cores" autocomplete="off">
-    <label class="field">Variant (optional)</label><input id="g-variant" placeholder="Happy &amp; Prosperous" value="${esc(g.variant||'')}" list="dl-variants" autocomplete="off">
+    <label class="field" id="g-variant-label">Variant (optional)</label><input id="g-variant" placeholder="Happy &amp; Prosperous" value="${esc(g.variant||'')}" list="dl-variants" autocomplete="off">
+    <div id="g-strategy-wrap"><label class="field">Strategy (optional)</label><textarea id="g-strategy" placeholder="e.g. Pass line with odds and two Come bets with odds at all times">${esc(g.strategy||'')}</textarea></div>
     ${gameDatalists()}
     <label class="field">Type</label><div class="seg" id="g-cat">${segMarkup(cat)}</div>
     <div id="g-slot" style="${isSlotty(cat)?'':'display:none'}"><div class="row2">
@@ -1996,8 +2017,10 @@ function openGameSheet(game){
     let selCat=cat;
     let imageUrl=g.image_url||null,artBg=g.art_bg||'';
     enableCents(document.getElementById('g-denom'));enableCents(document.getElementById('g-bet'));
+    applyStrategyUI('g',selCat);
     document.querySelectorAll('#g-cat button').forEach(b=>b.addEventListener('click',()=>{
       selCat=b.dataset.cat;document.querySelectorAll('#g-cat button').forEach(x=>x.classList.toggle('sel',x===b));
+      applyStrategyUI('g',selCat);
       document.getElementById('g-slot').style.display=isSlotty(selCat)?'':'none';}));
 
     const thumb=document.getElementById('g-art-thumb'),clearBtn=document.getElementById('g-art-clear'),
@@ -2029,6 +2052,7 @@ function openGameSheet(game){
     document.getElementById('g-save').addEventListener('click',async()=>{
       afterWrite(await api('ct-write',{action:'save-game',id:g.id||null,name:document.getElementById('g-name').value.trim(),
         variant:document.getElementById('g-variant').value.trim()||null,
+        strategy:(selCat==='bubble_craps'?(document.getElementById('g-strategy').value.trim()||null):null),
         category:selCat,default_denom:isSlotty(selCat)?document.getElementById('g-denom').value:null,
         default_bet:isSlotty(selCat)?document.getElementById('g-bet').value:null,
         default_buyin:document.getElementById('g-buyin').value||null,
@@ -2046,7 +2070,7 @@ let mockDB=null;
 function mockSeed(){
   const t=todayLocal();
   const dayAgo=(n)=>{const d=new Date();d.setDate(d.getDate()-n);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
-  let sid=0;const S=(o)=>({id:'s'+(++sid),account_id:'me',trip_id:'t1',game_id:null,notes:null,started_at:o.session_date+'T12:00:00',
+  let sid=0;const S=(o)=>({id:'s'+(++sid),account_id:'me',trip_id:'t1',game_id:null,notes:null,strategy:null,started_at:o.session_date+'T12:00:00',
     buyins:[],bonuses:[],denom:null,bet_size:null,casino:'Bellagio',cash_out:null,...o});
   const withBuyins=(s,amts)=>{s.buyins=amts.map((a,i)=>({id:s.id+'b'+i,session_id:s.id,amount:a}));s.buy_in_total=amts.reduce((x,y)=>x+y,0);return s;};
   const withBonus=(s,list)=>{s.bonuses=list.map((b,i)=>({id:s.id+'x'+i,session_id:s.id,amount:b.amount,base_bet:b.base_bet,multiple:b.base_bet?b.amount/b.base_bet:null,is_jackpot:b.amount>=2000,machine_name:s.game_name}));return s;};
@@ -2058,6 +2082,7 @@ function mockSeed(){
       {id:'g3',name:'Dragon Link',category:'slot',default_denom:0.05,default_bet:5,variant:'Happy & Prosperous',sort_order:2,archived:false},
       {id:'g4',name:'Blackjack',category:'table',default_denom:null,default_bet:null,default_buyin:300,sort_order:3,archived:false},
       {id:'g5',name:'Dbl Double Bonus',category:'video_poker',default_denom:0.25,default_bet:1.25,sort_order:4,archived:false},
+      {id:'g6',name:'Craps',category:'bubble_craps',variant:'3 Point Molly',strategy:'Pass line with odds and two Come bets with odds at all times',default_denom:null,default_bet:null,default_buyin:100,sort_order:5,archived:false},
     ],
     trips:[{id:'t1',name:'Vegas — August',casino:'Bellagio',starting_bankroll:1000,start_date:dayAgo(2),started_at:dayAgo(2)+'T18:00:00',ended_at:null},
       {id:'t2',name:'Aria — July',casino:'Aria',starting_bankroll:500,start_date:dayAgo(30),started_at:dayAgo(30)+'T18:00:00',ended_at:dayAgo(29)+'T12:00:00'},
@@ -2066,6 +2091,7 @@ function mockSeed(){
       withBonus(withBuyins(S({game_name:'Lightning Link',category:'slot',denom:1,bet_size:2.5,session_date:t,cash_out:null}),[200,100]),[{amount:250,base_bet:2.5},{amount:80,base_bet:2.5}]),
       withBonus(withBuyins(S({game_name:'Buffalo Gold',category:'slot',denom:0.01,bet_size:1.5,session_date:t,cash_out:420}),[100]),[{amount:1500,base_bet:1.5}]),
       withBuyins(S({game_name:'Blackjack',category:'table',session_date:t,cash_out:60}),[100]),
+      withBuyins(S({game_name:'Craps — 3 Point Molly',category:'bubble_craps',session_date:t,cash_out:null,strategy:'Pass line with odds and two Come bets with odds at all times'}),[100]),
       withBonus(withBuyins(S({game_name:'Dragon Link',category:'slot',denom:0.05,bet_size:5,session_date:dayAgo(1),cash_out:900,trip_id:'t3'}),[300]),[{amount:2000,base_bet:5}]),
       withBuyins(S({game_name:'Blackjack',category:'table',session_date:dayAgo(1),cash_out:80,casino:'Bellagio',trip_id:'t3'}),[200]),
       withBonus(withBuyins(S({game_name:'Buffalo Gold',category:'slot',denom:0.01,bet_size:0.75,session_date:dayAgo(2),cash_out:40,casino:'Aria',trip_id:'t2'}),[150]),[{amount:120,base_bet:0.75}]),
@@ -2124,12 +2150,13 @@ function mockWrite(b){
       if('denom' in b)s.denom=b.denom===''?null:num(b.denom);
       if('bet_size' in b)s.bet_size=b.bet_size===''?null:num(b.bet_size);
       if('notes' in b)s.notes=b.notes;
+      if('strategy' in b)s.strategy=b.strategy;
       if('cash_out' in b)s.cash_out=b.cash_out===''||b.cash_out==null?null:num(b.cash_out);
     }else{
       if(b.client_key&&mockDB.sessions.some(s=>s.client_key===b.client_key))return; // idempotent
       const s={id:mockId('s'),account_id:'me',client_key:b.client_key||null,trip_id:b.trip_id||null,game_id:b.game_id||null,game_name:b.game_name||'Untitled',
       category:b.category||'slot',casino:b.casino||null,denom:b.denom?num(b.denom):null,bet_size:b.bet_size?num(b.bet_size):null,
-      notes:null,buy_in_total:0,cash_out:'cash_out' in b?(b.cash_out?num(b.cash_out):null):null,session_date:b.session_date||todayLocal(),
+      notes:null,strategy:b.strategy??null,buy_in_total:0,cash_out:'cash_out' in b?(b.cash_out?num(b.cash_out):null):null,session_date:b.session_date||todayLocal(),
       started_at:new Date().toISOString(),buyins:[],bonuses:[]};
       if(b.buy_in){s.buyins.push({id:mockId('b'),session_id:s.id,amount:num(b.buy_in)});mockRecompute(s);}
       mockDB.sessions.push(s);}
@@ -2141,8 +2168,8 @@ function mockWrite(b){
   else if(a==='delete-bonus'){mockDB.sessions.forEach(s=>s.bonuses=s.bonuses.filter(x=>x.id!==b.id));}
   else if(a==='set-bonus-jackpot'){mockDB.sessions.forEach(s=>{const bx=s.bonuses.find(x=>x.id===b.id);if(bx)bx.is_jackpot=!!b.is_jackpot;});}
   else if(a==='save-game'){const img=('image_url' in b)?(b.image_url||null):undefined;const abg=('art_bg' in b)?(b.art_bg||null):undefined;const vr=('variant' in b)?(b.variant||null):undefined;
-    if(b.id){const g=mockDB.games.find(x=>x.id===b.id);if(g){Object.assign(g,{name:b.name,category:b.category,default_denom:b.default_denom?num(b.default_denom):null,default_bet:b.default_bet?num(b.default_bet):null,default_buyin:b.default_buyin?num(b.default_buyin):null});if(img!==undefined)g.image_url=img;if(abg!==undefined)g.art_bg=abg;if(vr!==undefined)g.variant=vr;}}
-    else mockDB.games.push({id:mockId('g'),name:b.name,category:b.category,variant:vr||null,default_denom:b.default_denom?num(b.default_denom):null,default_bet:b.default_bet?num(b.default_bet):null,default_buyin:b.default_buyin?num(b.default_buyin):null,image_url:img||null,art_bg:abg||null,sort_order:mockDB.games.length,archived:false});}
+    if(b.id){const g=mockDB.games.find(x=>x.id===b.id);if(g){Object.assign(g,{name:b.name,category:b.category,default_denom:b.default_denom?num(b.default_denom):null,default_bet:b.default_bet?num(b.default_bet):null,default_buyin:b.default_buyin?num(b.default_buyin):null});if(img!==undefined)g.image_url=img;if(abg!==undefined)g.art_bg=abg;if(vr!==undefined)g.variant=vr;if('strategy' in b)g.strategy=b.strategy;}}
+    else mockDB.games.push({id:mockId('g'),name:b.name,category:b.category,variant:vr||null,strategy:b.strategy||null,default_denom:b.default_denom?num(b.default_denom):null,default_bet:b.default_bet?num(b.default_bet):null,default_buyin:b.default_buyin?num(b.default_buyin):null,image_url:img||null,art_bg:abg||null,sort_order:mockDB.games.length,archived:false});}
   else if(a==='delete-game'){const g=mockDB.games.find(x=>x.id===b.id);if(g)g.archived=true;}
   else if(a==='reorder-games'){(b.ids||[]).forEach((id,i)=>{const g=mockDB.games.find(x=>x.id===id);if(g)g.sort_order=i;});}
   else if(a==='save-trip'){if(b.id){const t=mockDB.trips.find(x=>x.id===b.id);if(t)Object.assign(t,{name:b.name,casino:b.casino,starting_bankroll:num(b.starting_bankroll)});}
