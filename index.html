@@ -549,7 +549,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.25';
+const APP_VERSION='0.9.26';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -2204,8 +2204,10 @@ async function moveGame(id,dir){
   const resp=await api('ct-write',{action:'reorder-games',ids});
   if(resp&&resp.ok){applyBootstrap(resp.bootstrap);renderGames();}
 }
-function openGameSheet(game){
-  const g=game||{};const cat=g.category||'slot';
+// seed: optional prefill for a NEW game (used by Duplicate). It never carries an id,
+// so saving it always creates a new catalog entry.
+function openGameSheet(game,seed){
+  const g=game||seed||{};const cat=g.category||'slot';
   openSheet(game?'Edit game':'Add a game',`
     <label class="field">Name / Core game</label><input id="g-name" placeholder="Dragon Link" value="${esc(g.name||'')}" list="dl-cores" autocomplete="off">
     <label class="field" id="g-variant-label">Variant (optional)</label><input id="g-variant" placeholder="Happy &amp; Prosperous" value="${esc(g.variant||'')}" list="dl-variants" autocomplete="off">
@@ -2235,10 +2237,12 @@ function openGameSheet(game){
         <button type="button" data-bg="#ffffff">White</button>
       </div>
     </div>
+    ${game?`<button class="btn" id="g-dupe" style="width:100%;margin-top:12px;" title="Start a new game with these settings, Variant left blank">Duplicate as new variant</button>`:''}
     <div class="sheet-actions"><button class="btn" data-close-sheet>Cancel</button>
       <button class="btn primary" id="g-save">Save</button></div>
   `,()=>{
     let selCat=cat;
+    if(seed){const v=document.getElementById('g-variant');if(v)setTimeout(()=>v.focus(),50);}
     let imageUrl=g.image_url||null,artBg=g.art_bg||'';
     enableCents(document.getElementById('g-bet'));
     applyStrategyUI('g',selCat);
@@ -2271,6 +2275,21 @@ function openGameSheet(game){
       try{imageUrl=await uploadGameArt(f);artBg='';status.textContent='Uploaded.';paintThumb();}
       catch(e){status.style.color='var(--loss)';status.textContent=(e&&e.message)||'Upload failed.';}
       finally{pickBtn.disabled=false;fileInput.value='';}
+    });
+
+    // Duplicate: reopen as "Add a game" carrying the form's CURRENT values (so unsaved
+    // tweaks come along) for core name, type, denom, bet, buy-in and art. Variant and
+    // strategy start blank. The original is left untouched unless you hit Save first.
+    const dupeBtn=document.getElementById('g-dupe');
+    if(dupeBtn)dupeBtn.addEventListener('click',()=>{
+      const slotty=isSlotty(selCat);
+      openGameSheet(null,{
+        name:document.getElementById('g-name').value.trim(),
+        variant:'',category:selCat,
+        default_denom:slotty?document.getElementById('g-denom').value:null,
+        default_bet:slotty?(document.getElementById('g-bet').value||null):null,
+        default_buyin:document.getElementById('g-buyin').value||null,
+        image_url:imageUrl||null,art_bg:(imageUrl&&artBg)?artBg:null});
     });
 
     document.getElementById('g-save').addEventListener('click',async()=>{
