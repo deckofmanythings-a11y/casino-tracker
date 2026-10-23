@@ -175,7 +175,7 @@
   .hist-day .hd-net{font-weight:800;font-size:16px;white-space:nowrap;}
   .hist-grp{display:flex;align-items:center;gap:9px;padding:10px 12px;margin-top:8px;margin-left:8px;border-radius:12px;cursor:pointer;}
   .hist-grp .hg-name{min-width:0;font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-  .hist-grp .hg-badge{flex:0 0 auto;font-size:11px;font-weight:800;color:#2a1c04;background:var(--gold);border-radius:20px;padding:1px 8px;}
+  .hist-grp .hg-badge{flex:0 0 auto;font-size:11px;font-weight:800;color:var(--on-gold);background:var(--gold);border-radius:20px;padding:1px 8px;}
   .hist-grp .hg-net{margin-left:auto;flex:0 0 auto;font-weight:800;font-size:15px;white-space:nowrap;}
   .chev{flex:0 0 auto;color:var(--gold-dim);font-size:11px;transition:transform .22s ease;}
   .hist-day.open>.chev,.hist-grp.open>.chev{transform:rotate(90deg);}
@@ -337,10 +337,11 @@
     --edge:linear-gradient(135deg,#fbeeb0,#e6c366 26%,#a97e30 55%,#f6e29a 80%,#c9a24e);
     --edge-soft:linear-gradient(135deg,#f3e3a8,#caa24e 60%,#e9cd7e);
     --gold-face:linear-gradient(135deg,#f8e79f,#d8ab44); /* primary-button / selected-pill face */
+    --page-hi:#f4eede; --page-mid:#eae3d2; --page-lo:#e0d8c3; /* page background gradient stops */
   }
   body{background:
-      radial-gradient(130% 90% at 50% -20%, #f4eede 0%, rgba(244,238,222,0) 55%),
-      linear-gradient(180deg,#eae3d2,#e0d8c3);
+      radial-gradient(130% 90% at 50% -20%, var(--page-hi) 0%, rgba(244,238,222,0) 55%),
+      linear-gradient(180deg,var(--page-mid),var(--page-lo));
     background-attachment:fixed;color:var(--text);}
 
   /* Marble-faced surfaces with a gold bevel edge */
@@ -348,27 +349,27 @@
   .money-block,.bonus-row,.toggle-row,.cat-tile,.hist-day,.hist-grp,
   .comp-row,.comp-pop-row,.casino-color-row{
     border:2px solid transparent;
-    background:linear-gradient(var(--surf,#f6f2e8),var(--surf,#f6f2e8)) padding-box, var(--edge) border-box;}
-  .comp-pop-row,.casino-color-row{--surf:#efe8d9;}
-  .hist-day{--surf:#f4ecd9;}
-  .cat-tile.open{color:#2a1c04;
-    background:linear-gradient(135deg,#f8e79f,#d8ab44) padding-box, var(--edge) border-box;}
-  .cat-tile.open .ctc{color:#2a1c04;}
-  .money-block,.bonus-row,.toggle-row{--surf:#efe8d9;}
-  .trip-banner{--surf:#f8f0d6;}
+    background:linear-gradient(var(--surf,var(--panel)),var(--surf,var(--panel))) padding-box, var(--edge) border-box;}
+  .comp-pop-row,.casino-color-row{--surf:var(--panel2);}
+  .hist-day{--surf:var(--panel2);}
+  .cat-tile.open{color:var(--on-gold);
+    background:var(--gold-face) padding-box, var(--edge) border-box;}
+  .cat-tile.open .ctc{color:var(--on-gold);}
+  .money-block,.bonus-row,.toggle-row{--surf:var(--panel2);}
+  .trip-banner{--surf:var(--panel);}
   .card{box-shadow:var(--shadow);}
   .session-card.active{box-shadow:0 0 0 2px rgba(169,128,31,.55),var(--shadow);}
 
   /* Fast-select tiles */
   .fast-chip{border:2px solid transparent;
-    background:linear-gradient(#f6f2e8,#f6f2e8) padding-box, var(--edge) border-box;}
-  .fast-chip.more{background:linear-gradient(#efe8d9,#efe8d9) padding-box, var(--edge) border-box;}
-  .fast-chip.new{border:2px dashed var(--gold-dim);background:#f1ead9;color:var(--gold);}
+    background:linear-gradient(var(--panel),var(--panel)) padding-box, var(--edge) border-box;}
+  .fast-chip.more{background:linear-gradient(var(--panel2),var(--panel2)) padding-box, var(--edge) border-box;}
+  .fast-chip.new{border:2px dashed var(--gold-dim);background:var(--panel2);color:var(--gold);}
   .fast-chip.has-art{border:2px solid var(--gold-dim);background-color:#0a0e0c;}
 
   /* Buttons */
   .btn{border:2px solid transparent;color:var(--text);
-    background:linear-gradient(#efe8d9,#efe8d9) padding-box, var(--edge-soft) border-box;}
+    background:linear-gradient(var(--panel2),var(--panel2)) padding-box, var(--edge-soft) border-box;}
   .btn.primary{color:var(--on-gold);
     background:var(--gold-face) padding-box, var(--edge) border-box;}
   .btn.win{color:#177a48;
@@ -379,7 +380,7 @@
 
   /* Inputs + segmented controls */
   input,select,textarea,.seg button{border:2px solid transparent;color:var(--text);
-    background:linear-gradient(#efe8d9,#efe8d9) padding-box, var(--edge-soft) border-box;}
+    background:linear-gradient(var(--panel2),var(--panel2)) padding-box, var(--edge-soft) border-box;}
   .seg button{color:var(--muted);}
   .seg button.sel{color:var(--on-gold);
     background:var(--gold-face) padding-box, var(--edge) border-box;}
@@ -397,7 +398,7 @@
   #nav{background:rgba(247,243,233,.9);border-top:1px solid var(--gold-dim);}
   #reload-pill{background:#fbe9e7;border:1px solid var(--loss);color:#8a241f;}
   #reload-pill b{color:#8a241f;}
-  #mock-flag{color:#2a1c04;}
+  #mock-flag{color:var(--on-gold);}
   /* Tappable W-2G flag on each bonus row: filled gold when on, subtle outline when off. */
   .jp-toggle{font-size:9px;font-weight:800;letter-spacing:.5px;padding:2px 6px;border-radius:5px;text-transform:uppercase;
     cursor:pointer;user-select:none;border:1px solid var(--gold-dim);color:var(--gold-dim);background:transparent;opacity:.55;}
@@ -423,8 +424,8 @@
   .dow-row{display:flex;gap:6px;}
   .dow-btn{flex:1 1 0;min-width:0;padding:9px 0;border-radius:10px;font-size:13px;font-weight:700;text-align:center;
     cursor:pointer;user-select:none;color:var(--muted);border:2px solid transparent;
-    background:linear-gradient(#efe8d9,#efe8d9) padding-box, var(--edge-soft) border-box;}
-  .dow-btn.sel{color:#2a1c04;background:linear-gradient(135deg,#f8e79f,#d8ab44) padding-box, var(--edge) border-box;}
+    background:linear-gradient(var(--panel2),var(--panel2)) padding-box, var(--edge-soft) border-box;}
+  .dow-btn.sel{color:var(--on-gold);background:var(--gold-face) padding-box, var(--edge) border-box;}
   /* Popup + casino-colour rows */
   .comp-pop-row,.casino-color-row{display:flex;align-items:center;gap:11px;padding:10px 12px;border-radius:13px;margin-top:8px;}
   .comp-pop-row .cpr-main{min-width:0;flex:1;}
@@ -433,7 +434,7 @@
   .comp-pop-row.used{opacity:.6;}
   .comp-pop-row.used .cpr-title{text-decoration:line-through;}
   .comp-pop-row .cpr-btn{flex:0 0 auto;padding:8px 12px;font-size:13px;border-radius:11px;font-weight:700;cursor:pointer;
-    color:#2a1c04;border:2px solid transparent;background:linear-gradient(135deg,#f8e79f,#d8ab44) padding-box, var(--edge) border-box;}
+    color:var(--on-gold);border:2px solid transparent;background:var(--gold-face) padding-box, var(--edge) border-box;}
   .comp-pop-row .cpr-done{flex:0 0 auto;font-size:12px;font-weight:700;color:var(--win);}
   .casino-color-row .ccr-name{min-width:0;flex:1;font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .casino-color-row input[type=color]{flex:0 0 auto;width:38px;height:34px;padding:2px;border-radius:9px;cursor:pointer;}
@@ -548,7 +549,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.24';
+const APP_VERSION='0.9.25';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -650,7 +651,8 @@ const CASINO_THEMES={
 // Recolour the accent tokens for a casino (or clear back to default marble/gold when unknown).
 function applyCasinoTheme(casino){
   const t=CASINO_THEMES[casino],r=document.documentElement.style;
-  const keys=['--gold','--gold-dim','--border','--edge','--edge-soft','--gold-face','--on-gold'];
+  const keys=['--gold','--gold-dim','--border','--edge','--edge-soft','--gold-face','--on-gold',
+    '--panel','--panel2','--chip','--page-hi','--page-mid','--page-lo'];
   if(!t){keys.forEach(k=>r.removeProperty(k));return;}
   const a=t.accent;
   r.setProperty('--gold',a);
@@ -660,6 +662,14 @@ function applyCasinoTheme(casino){
   r.setProperty('--border',`color-mix(in srgb, ${a} 58%, #efe8d9)`);
   r.setProperty('--edge',`linear-gradient(135deg, color-mix(in srgb, ${a} 34%, #fff), ${a} 46%, color-mix(in srgb, ${a} 58%, #000) 70%, color-mix(in srgb, ${a} 28%, #fff))`);
   r.setProperty('--edge-soft',`linear-gradient(135deg, color-mix(in srgb, ${a} 28%, #fff), ${a} 60%, color-mix(in srgb, ${a} 44%, #fff))`);
+  // Tint the cream surfaces + page toward the accent so each casino is distinct. Button/control
+  // face (--panel2) is tinted a touch more than card face (--panel) to keep them distinguishable.
+  r.setProperty('--panel',`color-mix(in srgb, ${a} 7%, #f6f2e8)`);
+  r.setProperty('--panel2',`color-mix(in srgb, ${a} 14%, #efe8d9)`);
+  r.setProperty('--chip',`color-mix(in srgb, ${a} 12%, #ece3cf)`);
+  r.setProperty('--page-hi',`color-mix(in srgb, ${a} 7%, #f4eede)`);
+  r.setProperty('--page-mid',`color-mix(in srgb, ${a} 11%, #eae3d2)`);
+  r.setProperty('--page-lo',`color-mix(in srgb, ${a} 16%, #e0d8c3)`);
 }
 // Build a <select> of casinos. Any existing off-list value (e.g. a legacy free-text casino)
 // is kept as a selectable option so editing an old record never silently drops it.
