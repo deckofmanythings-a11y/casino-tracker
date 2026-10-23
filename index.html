@@ -547,7 +547,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.21';
+const APP_VERSION='0.9.22';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -639,6 +639,17 @@ function casinoSelect(id,selected){
   const list=(sel&&!CASINOS.includes(sel))?[sel,...CASINOS]:CASINOS;
   return `<select id="${id}"><option value=""${sel?'':' selected'}>— Select casino —</option>`+
     list.map(c=>`<option value="${esc(c)}"${c===sel?' selected':''}>${esc(c)}</option>`).join('')+`</select>`;
+}
+// Standard casino slot/VP denominations for the Denomination picker.
+const DENOMS=[0.01,0.02,0.05,0.10,0.25,0.50,1,2,5,10,25];
+function denomLabel(v){v=Number(v);return v<1?('$'+v.toFixed(2).slice(1)):(Number.isInteger(v)?('$'+v):('$'+v.toFixed(2)));}
+function denomSelect(id,selected){
+  const sel=(selected==null||selected==='')?null:num(selected);
+  let opts=`<option value=""${sel==null?' selected':''}>—</option>`+
+    DENOMS.map(d=>`<option value="${d}"${sel!=null&&Math.abs(sel-d)<1e-9?' selected':''}>${denomLabel(d)}</option>`).join('');
+  // Preserve a legacy/off-list stored denom as its own selectable option.
+  if(sel!=null&&!DENOMS.some(d=>Math.abs(sel-d)<1e-9))opts+=`<option value="${sel}" selected>${denomLabel(sel)}</option>`;
+  return `<select id="${id}">${opts}</select>`;
 }
 // The free-text note recorded for a casino (via the Casinos manager), or '' when none.
 function casinoNote(name){return (name&&(state.comp_casinos||[]).find(c=>c.casino===name)?.notes)||'';}
@@ -1204,7 +1215,7 @@ function openSessionSheet(game){
     <div class="seg" id="f-cat">${segMarkup(cat)}</div>
     <div id="f-slotfields" style="${isSlotty(cat)?'':'display:none'}">
       <div class="row2">
-        <div><label class="field">Denomination</label><input id="f-denom" inputmode="decimal" placeholder="1.00" value="${g.default_denom??''}"></div>
+        <div><label class="field">Denomination</label>${denomSelect('f-denom',g.default_denom)}</div>
         <div><label class="field">Base bet ($/spin)</label><input id="f-bet" inputmode="decimal" placeholder="2.50" value="${g.default_bet??''}"></div>
       </div>
     </div>
@@ -1222,7 +1233,7 @@ function openSessionSheet(game){
     let selCat=cat;
     wireCasinoNote('f-casino','f-casino-note');
     const clientKey=genKey(); // one idempotency key per opened sheet — a double-tap/retry can't duplicate
-    enableCents(document.getElementById('f-denom'));enableCents(document.getElementById('f-bet'));
+    enableCents(document.getElementById('f-bet'));
     applyCents(document.getElementById('f-buyin'),usesCents(selCat));
     applyStrategyUI('f',selCat);
     bindCrapsBonus('f');
@@ -1266,7 +1277,7 @@ function openEditSession(id){
     ${gameDatalists()}
     <label class="field">Type</label>
     <div class="seg" id="e-cat">${segMarkup(s.category)}</div>
-    <div id="e-slotfields" style="${isSlotty(s.category)?'':'display:none'}"><div class="row2"><div><label class="field">Denomination</label><input id="e-denom" inputmode="decimal" value="${s.denom??''}"></div>
+    <div id="e-slotfields" style="${isSlotty(s.category)?'':'display:none'}"><div class="row2"><div><label class="field">Denomination</label>${denomSelect('e-denom',s.denom)}</div>
       <div><label class="field">Base bet</label><input id="e-bet" inputmode="decimal" value="${s.bet_size??''}"></div></div></div>
     ${crapsBonusMarkup('e',s)}
     <label class="field">Casino</label>${casinoSelect('e-casino', s.casino||'')}
@@ -1283,7 +1294,7 @@ function openEditSession(id){
   `,()=>{
     let selCat=s.category;
     wireCasinoNote('e-casino','e-casino-note');
-    enableCents(document.getElementById('e-denom'));enableCents(document.getElementById('e-bet'));
+    enableCents(document.getElementById('e-bet'));
     applyCents(document.getElementById('e-cashout'),usesCents(selCat));
     applyStrategyUI('e',selCat);
     bindCrapsBonus('e');
@@ -2159,7 +2170,7 @@ function openGameSheet(game){
     ${gameDatalists()}
     <label class="field">Type</label><div class="seg" id="g-cat">${segMarkup(cat)}</div>
     <div id="g-slot" style="${isSlotty(cat)?'':'display:none'}"><div class="row2">
-      <div><label class="field">Default denom</label><input id="g-denom" inputmode="decimal" value="${g.default_denom??''}"></div>
+      <div><label class="field">Default denom</label>${denomSelect('g-denom',g.default_denom)}</div>
       <div><label class="field">Default bet</label><input id="g-bet" inputmode="decimal" value="${g.default_bet??''}"></div></div></div>
     <label class="field">Default buy-in (optional)</label>
     <div class="money-input"><span class="dollar">$</span><input id="g-buyin" inputmode="decimal" placeholder="300" value="${g.default_buyin??''}"></div>
@@ -2186,7 +2197,7 @@ function openGameSheet(game){
   `,()=>{
     let selCat=cat;
     let imageUrl=g.image_url||null,artBg=g.art_bg||'';
-    enableCents(document.getElementById('g-denom'));enableCents(document.getElementById('g-bet'));
+    enableCents(document.getElementById('g-bet'));
     applyStrategyUI('g',selCat);
     document.querySelectorAll('#g-cat button').forEach(b=>b.addEventListener('click',()=>{
       selCat=b.dataset.cat;document.querySelectorAll('#g-cat button').forEach(x=>x.classList.toggle('sel',x===b));
