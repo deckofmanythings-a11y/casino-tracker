@@ -48,16 +48,16 @@
   .na-toggle button{font-family:inherit;font-size:10px;font-weight:800;letter-spacing:.5px;padding:3px 10px;cursor:pointer;
     background:var(--panel2);color:var(--muted);border:1px solid var(--gold-dim);border-right:none;}
   .na-toggle button:last-child{border-right:1px solid var(--gold-dim);}
-  .na-toggle button.sel{background:var(--gold);color:#241c00;}
+  .na-toggle button.sel{background:var(--gold);color:var(--on-gold);}
   .na-ctrls{display:flex;align-items:center;gap:6px;flex:0 0 auto;}
   .na-combine{font-family:inherit;font-size:10px;font-weight:800;letter-spacing:.5px;padding:3px 9px;cursor:pointer;
     border-radius:8px;background:var(--panel2);color:var(--muted);border:1px solid var(--gold-dim);text-transform:uppercase;}
-  .na-combine.sel{background:var(--gold);color:#241c00;}
+  .na-combine.sel{background:var(--gold);color:var(--on-gold);}
   /* Stats by-game type filter */
   .gcat-row{display:flex;flex-wrap:wrap;gap:6px;margin:-2px 0 8px;}
   .gcat-pill{font-family:inherit;font-size:11px;font-weight:700;padding:5px 10px;cursor:pointer;border-radius:9px;
     background:var(--panel2);color:var(--muted);border:1px solid var(--gold-dim);white-space:nowrap;}
-  .gcat-pill.sel{background:var(--gold);color:#241c00;}
+  .gcat-pill.sel{background:var(--gold);color:var(--on-gold);}
   .bar-row .br-name .br-ic{margin-right:5px;}
   .muted{color:var(--muted);} .faint{color:var(--faint);}
   .win{color:var(--win);} .loss{color:var(--loss);}
@@ -150,7 +150,7 @@
   .bonus-row .b-mult{font-weight:800;color:var(--gold);min-width:62px;}
   .bonus-row .b-amt{font-weight:600;}
   .bonus-row .b-x{margin-left:auto;color:var(--faint);cursor:pointer;font-size:16px;padding:0 4px;}
-  .jackpot-badge{font-size:9px;font-weight:800;letter-spacing:.5px;background:var(--gold);color:#241c00;
+  .jackpot-badge{font-size:9px;font-weight:800;letter-spacing:.5px;background:var(--gold);color:var(--on-gold);
     padding:2px 6px;border-radius:5px;text-transform:uppercase;}
   .sc-notes{font-size:12px;color:var(--muted);margin-top:10px;font-style:italic;}
   .casino-note{margin-top:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
@@ -263,12 +263,12 @@
   .seg{display:flex;flex-wrap:wrap;gap:6px;}
   .seg button{flex:1 1 auto;min-width:88px;padding:9px 6px;border-radius:10px;background:var(--panel2);border:1px solid var(--border);
     color:var(--muted);font-size:12px;font-weight:700;white-space:nowrap;}
-  .seg button.sel{background:var(--gold);color:#241c00;border-color:var(--gold-dim);}
+  .seg button.sel{background:var(--gold);color:var(--on-gold);border-color:var(--gold-dim);}
   /* Craps bonus multi-select pills — independent toggles, not mutually exclusive like .seg */
   .cb-row{display:flex;flex-wrap:wrap;gap:8px;}
   .cb-pill{flex:1 1 auto;min-width:96px;padding:11px 8px;border-radius:12px;background:var(--panel2);border:1px solid var(--gold-dim);
     color:var(--muted);font-size:13px;font-weight:700;white-space:nowrap;cursor:pointer;}
-  .cb-pill.sel{background:var(--gold);color:#241c00;border-color:var(--gold-dim);}
+  .cb-pill.sel{background:var(--gold);color:var(--on-gold);border-color:var(--gold-dim);}
   .sc-cb{margin-top:12px;}
   .toggle-row{display:flex;align-items:center;justify-content:space-between;margin-top:14px;
     background:var(--panel2);border:1px solid var(--border);border-radius:12px;padding:11px 13px;}
@@ -298,7 +298,7 @@
 
   #version-tag{position:fixed;bottom:calc(60px + var(--safe-bottom));right:8px;font-size:9px;color:var(--faint);
     font-family:monospace;z-index:40;pointer-events:none;}
-  #mock-flag{position:fixed;top:0;left:0;right:0;background:var(--gold);color:#241c00;font-size:11px;
+  #mock-flag{position:fixed;top:0;left:0;right:0;background:var(--gold);color:var(--on-gold);font-size:11px;
     font-weight:700;text-align:center;padding:3px;z-index:200;display:none;}
   #reload-pill{position:fixed;top:calc(env(safe-area-inset-top,0px) + 6px);left:8px;right:8px;z-index:400;
     display:none;background:#5a1f26;border:1px solid var(--loss);color:#ffdfe3;font-size:12px;line-height:1.35;
@@ -331,11 +331,12 @@
     color-scheme:light;
     --bg:#e7e0cf; --panel:#f6f2e8; --panel2:#efe8d9; --border:#caa24e;
     --text:#241d12; --muted:#877852; --faint:#b0a37e;
-    --gold:#a9801f; --gold-dim:#8a6a2a;
+    --gold:#a9801f; --gold-dim:#8a6a2a; --on-gold:#241c00;
     --win:#1f9d5f; --loss:#d8433f; --chip:#ece3cf;
     --shadow:0 8px 22px rgba(60,45,20,.16);
     --edge:linear-gradient(135deg,#fbeeb0,#e6c366 26%,#a97e30 55%,#f6e29a 80%,#c9a24e);
     --edge-soft:linear-gradient(135deg,#f3e3a8,#caa24e 60%,#e9cd7e);
+    --gold-face:linear-gradient(135deg,#f8e79f,#d8ab44); /* primary-button / selected-pill face */
   }
   body{background:
       radial-gradient(130% 90% at 50% -20%, #f4eede 0%, rgba(244,238,222,0) 55%),
@@ -368,8 +369,8 @@
   /* Buttons */
   .btn{border:2px solid transparent;color:var(--text);
     background:linear-gradient(#efe8d9,#efe8d9) padding-box, var(--edge-soft) border-box;}
-  .btn.primary{color:#2a1c04;
-    background:linear-gradient(135deg,#f8e79f,#d8ab44) padding-box, var(--edge) border-box;}
+  .btn.primary{color:var(--on-gold);
+    background:var(--gold-face) padding-box, var(--edge) border-box;}
   .btn.win{color:#177a48;
     background:linear-gradient(rgba(31,157,95,.14),rgba(31,157,95,.14)) padding-box, var(--edge) border-box;}
   .btn.danger{color:var(--loss);
@@ -380,8 +381,8 @@
   input,select,textarea,.seg button{border:2px solid transparent;color:var(--text);
     background:linear-gradient(#efe8d9,#efe8d9) padding-box, var(--edge-soft) border-box;}
   .seg button{color:var(--muted);}
-  .seg button.sel{color:#2a1c04;
-    background:linear-gradient(135deg,#f8e79f,#d8ab44) padding-box, var(--edge) border-box;}
+  .seg button.sel{color:var(--on-gold);
+    background:var(--gold-face) padding-box, var(--edge) border-box;}
   input:focus,select:focus,textarea:focus{box-shadow:0 0 0 2px rgba(169,128,31,.4);}
   .money-input .dollar{color:var(--muted);}
 
@@ -400,7 +401,7 @@
   /* Tappable W-2G flag on each bonus row: filled gold when on, subtle outline when off. */
   .jp-toggle{font-size:9px;font-weight:800;letter-spacing:.5px;padding:2px 6px;border-radius:5px;text-transform:uppercase;
     cursor:pointer;user-select:none;border:1px solid var(--gold-dim);color:var(--gold-dim);background:transparent;opacity:.55;}
-  .jp-toggle.on{background:var(--gold);color:#241c00;border-color:var(--gold);opacity:1;}
+  .jp-toggle.on{background:var(--gold);color:var(--on-gold);border-color:var(--gold);opacity:1;}
 
   /* ── Comps ──────────────────────────────────────────────── */
   .comp-row{display:flex;align-items:center;gap:11px;padding:11px 13px;border-radius:14px;margin-top:8px;cursor:pointer;}
@@ -409,7 +410,7 @@
   .comp-main .comp-title{font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .comp-main .comp-sub{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px;}
   .comp-state{flex:0 0 auto;font-size:11px;color:var(--faint);}
-  .comp-pill{font-size:9px;font-weight:800;letter-spacing:.6px;background:var(--gold);color:#241c00;
+  .comp-pill{font-size:9px;font-weight:800;letter-spacing:.6px;background:var(--gold);color:var(--on-gold);
     border-radius:6px;padding:3px 7px;text-transform:uppercase;white-space:nowrap;}
   .comp-pill.warn{background:#e08a1e;color:#fff;}    /* expires soon */
   .comp-pill.urgent{background:var(--loss);color:#fff;} /* expires today */
@@ -547,7 +548,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.23';
+const APP_VERSION='0.9.24';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -588,7 +589,7 @@ function cacheState(){
   try{localStorage.setItem(CACHE_KEY,JSON.stringify({uid:account&&account.auth_user_id,account,bootstrap:{
     today:state.today,games:state.games,active_trip:state.active_trip,
     active_trip_totals:state.active_trip_totals,sessions:state.sessions,stakes:state.stakes,
-    comps:state.comps,comp_casinos:state.comp_casinos,recent_games:state.recent_games},ts:Date.now()}));}catch(_){}
+    comps:state.comps,comp_casinos:state.comp_casinos,recent_games:state.recent_games,theme_casino:state.theme_casino},ts:Date.now()}));}catch(_){}
 }
 function readCache(){try{const s=localStorage.getItem(CACHE_KEY);return s?JSON.parse(s):null;}catch(_){return null;}}
 
@@ -632,6 +633,34 @@ function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&l
 // Casinos for the picker. Add more here (via Claude Code) — no in-app "add casino" by design.
 const CASINOS=["Harrah's Northern California","Sky River","Jackson Rancheria","Cache Creek",
   "Thunder Valley","Red Hawk","Hard Rock Sacramento","Atlantis","GSR"];
+// Per-casino brand palettes: the app recolours its accent (buttons, selected states, the gold
+// card bevels) to the active trip's casino (or the last trip's). Money stays green/red and the
+// marble faces stay neutral for legibility. One accent + its on-accent text drives everything.
+const CASINO_THEMES={
+  "Harrah's Northern California":{accent:'#3c1361',text:'#ffffff'}, // deep purple
+  "Sky River":{accent:'#10697a',text:'#ffffff'},                    // teal
+  "Jackson Rancheria":{accent:'#7a2718',text:'#ffffff'},            // brick/maroon
+  "Cache Creek":{accent:'#e0a62e',text:'#241c00'},                  // amber (dark text)
+  "Thunder Valley":{accent:'#9e1b32',text:'#ffffff'},               // crimson
+  "Red Hawk":{accent:'#b22222',text:'#ffffff'},                     // red
+  "Hard Rock Sacramento":{accent:'#2e2c63',text:'#f3e7be'},         // indigo + soft gold
+  "Atlantis":{accent:'#9b2d8e',text:'#ffffff'},                     // magenta/purple
+  "GSR":{accent:'#8e1e40',text:'#ffffff'},                          // burgundy
+};
+// Recolour the accent tokens for a casino (or clear back to default marble/gold when unknown).
+function applyCasinoTheme(casino){
+  const t=CASINO_THEMES[casino],r=document.documentElement.style;
+  const keys=['--gold','--gold-dim','--border','--edge','--edge-soft','--gold-face','--on-gold'];
+  if(!t){keys.forEach(k=>r.removeProperty(k));return;}
+  const a=t.accent;
+  r.setProperty('--gold',a);
+  r.setProperty('--on-gold',t.text||'#241c00');
+  r.setProperty('--gold-face',`linear-gradient(135deg, color-mix(in srgb, ${a} 82%, #fff), ${a})`);
+  r.setProperty('--gold-dim',`color-mix(in srgb, ${a} 72%, #2a2410)`);
+  r.setProperty('--border',`color-mix(in srgb, ${a} 58%, #efe8d9)`);
+  r.setProperty('--edge',`linear-gradient(135deg, color-mix(in srgb, ${a} 34%, #fff), ${a} 46%, color-mix(in srgb, ${a} 58%, #000) 70%, color-mix(in srgb, ${a} 28%, #fff))`);
+  r.setProperty('--edge-soft',`linear-gradient(135deg, color-mix(in srgb, ${a} 28%, #fff), ${a} 60%, color-mix(in srgb, ${a} 44%, #fff))`);
+}
 // Build a <select> of casinos. Any existing off-list value (e.g. a legacy free-text casino)
 // is kept as a selectable option so editing an old record never silently drops it.
 function casinoSelect(id,selected){
@@ -754,7 +783,7 @@ async function api(name,payload){
   return callFn(name,{...payload,today:(payload&&payload.today)||state.today},token);
 }
 // Apply a bootstrap payload returned by any read/write to local state.
-function applyBootstrap(b){if(!b)return;state={...state,...b};}
+function applyBootstrap(b){if(!b)return;state={...state,...b};applyCasinoTheme(state.theme_casino);}
 
 // ── Auth (Supabase email/password) ─────────────────────────────────────────
 function callFnT(name,payload,ms=15000){return withTimeout(api(name,payload),ms,name).catch(e=>({ok:false,message:(e&&e.message)||String(e)}));}
@@ -2269,7 +2298,7 @@ function mockSeed(){
       {id:'g5',name:'Dbl Double Bonus',category:'video_poker',default_denom:0.25,default_bet:1.25,sort_order:4,archived:false},
       {id:'g6',name:'Craps',category:'bubble_craps',variant:'3 Point Molly',strategy:'Pass line with odds and two Come bets with odds at all times',default_denom:null,default_bet:null,default_buyin:100,sort_order:5,archived:false},
     ],
-    trips:[{id:'t1',name:'Vegas — August',casino:'Bellagio',starting_bankroll:1000,start_date:dayAgo(2),started_at:dayAgo(2)+'T18:00:00',ended_at:null},
+    trips:[{id:'t1',name:'Thunder Valley — August',casino:'Thunder Valley',starting_bankroll:1000,start_date:dayAgo(2),started_at:dayAgo(2)+'T18:00:00',ended_at:null},
       {id:'t2',name:'Aria — July',casino:'Aria',starting_bankroll:500,start_date:dayAgo(30),started_at:dayAgo(30)+'T18:00:00',ended_at:dayAgo(29)+'T12:00:00'},
       {id:'t3',name:'Bellagio — June',casino:'Bellagio',starting_bankroll:800,start_date:dayAgo(60),started_at:dayAgo(60)+'T18:00:00',ended_at:dayAgo(59)+'T12:00:00'}],
     sessions:[
@@ -2313,8 +2342,11 @@ function mockBootstrap(today){
   mockDB.sessions.slice().sort((a,b)=>String(b.started_at||'').localeCompare(String(a.started_at||''))).forEach(s=>{
     if(recent_games.length>=6||seenGame.has(s.game_name))return;seenGame.add(s.game_name);
     recent_games.push({name:s.game_name,category:s.category,game_id:s.game_id,default_denom:s.denom,default_bet:s.bet_size});});
+  // Theme the app by the active trip's casino, or the most recent trip's when none is active.
+  const lastTrip=mockDB.trips.slice().sort((a,b)=>String(b.started_at||'').localeCompare(String(a.started_at||'')))[0];
+  const theme_casino=(active_trip&&active_trip.casino)||(lastTrip&&lastTrip.casino)||null;
   return {today,games,active_trip,active_trip_totals,sessions,stakes:(mockDB.stakes||[]).slice(),
-    comps:(mockDB.comps||[]).slice(),comp_casinos:(mockDB.comp_casinos||[]).slice(),recent_games};
+    comps:(mockDB.comps||[]).slice(),comp_casinos:(mockDB.comp_casinos||[]).slice(),recent_games,theme_casino};
 }
 function mockRecompute(s){s.buy_in_total=s.buyins.reduce((x,b)=>x+num(b.amount),0);}
 function mockId(p){return p+Math.random().toString(36).slice(2,8);}
