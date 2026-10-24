@@ -214,6 +214,8 @@
   .btn-lg{width:100%;padding:14px;font-size:15px;}
   .icon-btn{background:var(--chip);border:1px solid var(--border);color:var(--muted);width:34px;height:34px;
     border-radius:10px;font-size:16px;display:flex;align-items:center;justify-content:center;flex:0 0 auto;}
+  .fav-btn{color:var(--muted);}
+  .fav-btn.on{color:#e0536b;border-color:#e0536b;}
 
   /* ── Stat tiles ─────────────────────────────────────────── */
   .tile-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
@@ -549,7 +551,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.26';
+const APP_VERSION='0.9.27';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -616,7 +618,6 @@ let byGameMode,byCasinoMode,lifetimeMode,combineVariants,byGameCat;
 function saveStatsView(){try{localStorage.setItem('ct_stats_view',
   JSON.stringify({byGame:byGameMode,byCasino:byCasinoMode,lifetime:lifetimeMode,combine:combineVariants,gameCat:byGameCat}));}catch(_){}}
 let openCat=null; // Today tab: which category's games are expanded (null = none)
-let recentResolved=[]; // Today tab: resolved game objects for the "Recently played" chips (data-recent index into this)
 
 // ── Formatting helpers ─────────────────────────────────────────────────────
 function todayLocal(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
@@ -953,24 +954,6 @@ function favChip(g){
     <div class="fc-name">${esc(g.name)}</div>
     <div class="fc-sub">${sub}</div></div>`;
 }
-// Like favChip but keyed by position (data-recent) instead of catalog id — recents can be
-// ad-hoc (synthesized, no id), so favChip's id-lookup click path won't resolve them.
-function recentChip(g,i){
-  const art=g.image_url&&g.image_url.indexOf('mock://')!==0;
-  const sub=g.variant?esc(g.variant):(g.default_bet!=null?money(g.default_bet)+' bet':catLabel(g.category));
-  if(art){
-    const attrs=g.art_bg
-      ?`style="background-image:url(&quot;${g.image_url}&quot;);background-color:${esc(g.art_bg)};"`
-      :`data-arturl="${esc(g.image_url)}" style="background-image:url(&quot;${g.image_url}&quot;)"`;
-    return `<div class="fast-chip has-art" data-recent="${i}" ${attrs}>
-      <div class="fc-scrim"></div>
-      <div class="fc-text"><div class="fc-name">${esc(g.name)}</div><div class="fc-sub">${sub}</div></div></div>`;
-  }
-  return `<div class="fast-chip" data-recent="${i}">
-    <div class="fc-cat">${catIcon(g.category)}</div>
-    <div class="fc-name">${esc(g.name)}</div>
-    <div class="fc-sub">${sub}</div></div>`;
-}
 function renderToday(){
   const sessions=state.sessions||[];
   const dayIn=sessions.reduce((s,x)=>s+num(x.buy_in_total),0);
@@ -1010,20 +993,14 @@ function renderToday(){
     panel=gs.map(favChip).join('')+
       `<div class="fast-chip new" data-game="__new" data-newcat="${openCat}">+ New</div>`;
   }else{
-    // Default (no category expanded): quick-start chips for the last games played.
-    // Resolve each to a real catalog game (richest prefill) or synthesize an ad-hoc one.
-    recentResolved=(state.recent_games||[]).map(r=>{
-      // Always resolve to the LIVE catalog game (by id, then by display name) so art/denom
-      // updates made on the Games page are re-pulled here; fall back to an ad-hoc synth.
-      let cat=r.game_id&&games.find(g=>g.id===r.game_id);
-      if(!cat)cat=games.find(g=>gameDisplay(g)===r.name);
-      if(cat)return cat;
-      const [core,variant]=splitGameName(r.name);
-      return {name:core,variant:variant||null,category:r.category,default_denom:r.default_denom,default_bet:r.default_bet};
-    });
-    if(recentResolved.length)
-      panel=`<div class="muted" style="grid-column:1/-1;font-size:11px;margin:2px 0 -2px;">Recently played</div>`+
-        recentResolved.map((g,i)=>recentChip(g,i)).join('');
+    // Default (no category expanded): the games marked favorite (♥) on the Games tab,
+    // kept in the user's sort order. favChip emits data-game, resolved by the handler below.
+    const favs=games.filter(g=>g.favorite);
+    if(favs.length)
+      panel=`<div class="muted" style="grid-column:1/-1;font-size:11px;margin:2px 0 -2px;">♥ Favorites</div>`+
+        favs.map(favChip).join('');
+    else
+      panel=`<div class="muted" style="grid-column:1/-1;font-size:12px;padding:4px 2px;">No favorites yet — tap ♡ on a game in the Games tab to pin it here.</div>`;
   }
   fs.innerHTML=`<div class="cat-row">${catRow}</div><div class="cat-games" id="cat-games">${panel}</div>`;
   paintArtBgs(fs);
@@ -1034,9 +1011,6 @@ function renderToday(){
     if(el.dataset.game==='__new')openSessionSheet(el.dataset.newcat?{category:el.dataset.newcat}:undefined);
     else openSessionSheet(games.find(g=>g.id===el.dataset.game));
   }));
-  // Recents can be ad-hoc (no catalog id), so resolve by position into recentResolved.
-  fs.querySelectorAll('#cat-games [data-recent]').forEach(el=>el.addEventListener('click',()=>
-    openSessionSheet(recentResolved[+el.dataset.recent])));
 
   // Most-recent first (sessions arrive started_at ascending from the server).
   const byNewest=(a,b)=>String(b.started_at||'').localeCompare(String(a.started_at||''));
@@ -2177,6 +2151,7 @@ function renderGames(){
       <div class="gr-main" data-editgame="${g.id}"><div class="sr-name">${esc(g.name)}</div>
         <div class="sr-sub">${g.variant?esc(g.variant)+' · ':''}${catLabel(g.category)}${g.default_bet!=null?' · '+money(g.default_bet)+' bet':''}${g.default_denom!=null?' · '+money(g.default_denom)+' denom':''}${g.default_buyin!=null?' · '+money(g.default_buyin)+' buy-in':''}</div></div>
       <div class="gr-ctrls">
+        <button class="icon-btn fav-btn${g.favorite?' on':''}" data-fav="${g.id}" aria-label="Favorite">${g.favorite?'♥':'♡'}</button>
         <button class="icon-btn" data-move-up="${g.id}" ${i===0?'disabled':''} aria-label="Move up">▲</button>
         <button class="icon-btn" data-move-down="${g.id}" ${i===games.length-1?'disabled':''} aria-label="Move down">▼</button>
         <button class="icon-btn" data-delgame="${g.id}" aria-label="Remove">🗑</button>
@@ -2190,6 +2165,14 @@ function renderGames(){
   body.querySelectorAll('[data-delgame]').forEach(el=>el.addEventListener('click',async()=>{
     if(!await confirmDialog('Remove this game from fast-select?',{confirmLabel:'Remove',danger:true}))return;
     afterWrite(await api('ct-write',{action:'delete-game',id:el.dataset.delgame}));}));
+  body.querySelectorAll('[data-fav]').forEach(el=>el.addEventListener('click',async()=>{
+    const id=el.dataset.fav,g=(state.games||[]).find(x=>x.id===id);if(!g)return;
+    const newVal=!g.favorite;
+    el.classList.toggle('on',newVal);el.textContent=newVal?'♥':'♡'; // optimistic
+    const r=await api('ct-write',{action:'set-game-favorite',id,favorite:newVal});
+    if(r&&r.ok){applyBootstrap(r.bootstrap);cacheState();renderGames();}
+    else{el.classList.toggle('on',!newVal);el.textContent=!newVal?'♥':'♡';} // revert
+  }));
 }
 
 // Move a favorite one slot up (dir=-1) or down (dir=1) and persist the new order via
@@ -2320,12 +2303,12 @@ function mockSeed(){
   mockDB={
     account:{id:'me',discord_username:'You (demo)',session_token:'mock'},
     games:[
-      {id:'g1',name:'Lightning Link',category:'slot',default_denom:1,default_bet:2.5,sort_order:0,archived:false},
-      {id:'g2',name:'Buffalo Gold',category:'slot',default_denom:0.01,default_bet:1.5,sort_order:1,archived:false},
+      {id:'g1',name:'Lightning Link',category:'slot',default_denom:1,default_bet:2.5,sort_order:0,archived:false,favorite:true},
+      {id:'g2',name:'Buffalo Gold',category:'slot',default_denom:0.01,default_bet:1.5,sort_order:1,archived:false,favorite:true},
       {id:'g3',name:'Dragon Link',category:'slot',default_denom:0.05,default_bet:5,variant:'Happy & Prosperous',sort_order:2,archived:false},
       {id:'g4',name:'Blackjack',category:'table',default_denom:null,default_bet:null,default_buyin:300,sort_order:3,archived:false},
       {id:'g5',name:'Dbl Double Bonus',category:'video_poker',default_denom:0.25,default_bet:1.25,sort_order:4,archived:false},
-      {id:'g6',name:'Craps',category:'bubble_craps',variant:'3 Point Molly',strategy:'Pass line with odds and two Come bets with odds at all times',default_denom:null,default_bet:null,default_buyin:100,sort_order:5,archived:false},
+      {id:'g6',name:'Craps',category:'bubble_craps',variant:'3 Point Molly',strategy:'Pass line with odds and two Come bets with odds at all times',default_denom:null,default_bet:null,default_buyin:100,sort_order:5,archived:false,favorite:true},
     ],
     trips:[{id:'t1',name:'Thunder Valley — August',casino:'Thunder Valley',starting_bankroll:1000,start_date:dayAgo(2),started_at:dayAgo(2)+'T18:00:00',ended_at:null},
       {id:'t2',name:'Aria — July',casino:'Aria',starting_bankroll:500,start_date:dayAgo(30),started_at:dayAgo(30)+'T18:00:00',ended_at:dayAgo(29)+'T12:00:00'},
@@ -2425,6 +2408,7 @@ function mockWrite(b){
     if(b.id){const g=mockDB.games.find(x=>x.id===b.id);if(g){Object.assign(g,{name:b.name,category:b.category,default_denom:b.default_denom?num(b.default_denom):null,default_bet:b.default_bet?num(b.default_bet):null,default_buyin:b.default_buyin?num(b.default_buyin):null});if(img!==undefined)g.image_url=img;if(abg!==undefined)g.art_bg=abg;if(vr!==undefined)g.variant=vr;if('strategy' in b)g.strategy=b.strategy;}}
     else mockDB.games.push({id:mockId('g'),name:b.name,category:b.category,variant:vr||null,strategy:b.strategy||null,default_denom:b.default_denom?num(b.default_denom):null,default_bet:b.default_bet?num(b.default_bet):null,default_buyin:b.default_buyin?num(b.default_buyin):null,image_url:img||null,art_bg:abg||null,sort_order:mockDB.games.length,archived:false});}
   else if(a==='delete-game'){const g=mockDB.games.find(x=>x.id===b.id);if(g)g.archived=true;}
+  else if(a==='set-game-favorite'){const g=mockDB.games.find(x=>x.id===b.id);if(g)g.favorite=b.favorite===true;}
   else if(a==='reorder-games'){(b.ids||[]).forEach((id,i)=>{const g=mockDB.games.find(x=>x.id===id);if(g)g.sort_order=i;});}
   else if(a==='save-trip'){if(b.id){const t=mockDB.trips.find(x=>x.id===b.id);if(t)Object.assign(t,{name:b.name,casino:b.casino,starting_bankroll:num(b.starting_bankroll)});}
     else mockDB.trips.push({id:mockId('t'),name:b.name,casino:b.casino,starting_bankroll:num(b.starting_bankroll),start_date:b.start_date||todayLocal(),started_at:new Date().toISOString(),ended_at:null});}
