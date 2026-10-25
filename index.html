@@ -453,10 +453,12 @@
   .cmp-wdhead{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:4px;}
   .cmp-wdhead div{text-align:center;font-size:11px;font-weight:700;color:var(--muted);}
   /* Comps month-bars: one grid per week, day numbers on row 1, spanning comp bars on lanes below */
-  .cmp-wk{display:grid;grid-template-columns:repeat(7,1fr);grid-auto-rows:18px;gap:3px;margin-bottom:6px;}
-  .cmp-dnum{grid-row:1;font-size:11px;font-weight:700;color:var(--text);text-align:center;line-height:18px;cursor:pointer;}
-  .cmp-dnum.faint{color:var(--muted);opacity:.5;}
-  .cmp-dnum.today{color:var(--gold);background:var(--gold-dim);border-radius:6px;}
+  .cmp-wk{display:grid;grid-template-columns:repeat(7,1fr);grid-template-rows:auto;grid-auto-rows:18px;gap:3px;margin-bottom:6px;}
+  .cmp-dnum{grid-row:1;display:flex;flex-direction:column;align-items:center;gap:1px;padding:1px 0 2px;cursor:pointer;}
+  .cmp-dn{font-size:11px;font-weight:700;color:var(--text);line-height:1.25;min-width:17px;text-align:center;}
+  .cmp-dtot{font-size:9px;font-weight:800;color:var(--gold);line-height:1;}
+  .cmp-dnum.faint .cmp-dn{color:var(--muted);opacity:.5;}
+  .cmp-dnum.today .cmp-dn{color:var(--on-gold);background:var(--gold);border-radius:999px;padding:0 6px;}
   .cmp-bar{overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-size:10px;font-weight:700;color:#fff;
     text-shadow:0 1px 1px rgba(0,0,0,.5);border-radius:5px;padding:0 5px;line-height:18px;cursor:pointer;}
   .cmp-day-total{display:flex;justify-content:space-between;align-items:center;font-size:14px;font-weight:700;
@@ -577,7 +579,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.32';
+const APP_VERSION='0.9.33';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -2037,8 +2039,10 @@ function renderCompsCalendar(){
     let row1='';
     days.forEach(iso=>{
       const dn=num(iso.split('-')[2]);
-      const cls=`cmp-dnum${iso.slice(0,7)===mPrefix?'':' faint'}${iso===state.today?' today':''}`;
-      row1+=`<div class="${cls}" data-cday="${iso}">${dn}</div>`;
+      const inMonth=iso.slice(0,7)===mPrefix;
+      const cls=`cmp-dnum${inMonth?'':' faint'}${iso===state.today?' today':''}`;
+      const tot=inMonth?fcomps.reduce((t,c)=>t+(compAvailable(c,iso)?compAmount(c):0),0):0;
+      row1+=`<div class="${cls}" data-cday="${iso}"><span class="cmp-dn">${dn}</span>${tot>0?`<span class="cmp-dtot">$${Number.isInteger(tot)?tot:tot.toFixed(2)}</span>`:''}</div>`;
     });
     // Collect consecutive eligible-day runs per comp within this week.
     const runs=[];
@@ -2056,7 +2060,7 @@ function renderCompsCalendar(){
         lane++;}
     });
     const bars=runs.map(r=>{const c=r.comp;
-      return `<div class="cmp-bar" data-compbar="${c.id}" style="grid-column:${r.start+1}/${r.end+2};grid-row:${r.lane+2};background:${esc(compCasinoColor(c.casino))};">${money(compAmount(c))} ${esc(c.title||'Comp')}</div>`;
+      return `<div class="cmp-bar" data-compbar="${c.id}" style="grid-column:${r.start+1}/${r.end+2};grid-row:${r.lane+2};background:${esc(compCasinoColor(c.casino))};">${esc(c.title||'Comp')}</div>`;
     }).join('');
     weeksHtml+=`<div class="cmp-wk">${row1}${bars}</div>`;
   }
