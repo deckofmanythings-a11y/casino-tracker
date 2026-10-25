@@ -551,7 +551,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.27';
+const APP_VERSION='0.9.28';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -1990,6 +1990,7 @@ function openCompSheet(comp){
     <div class="dow-row" id="c-dow">${dowLetters.map((L,i)=>`<div class="dow-btn${dowSel.includes(i)?' sel':''}" data-dow="${i}">${L}</div>`).join('')}</div>
     <label class="field">Notes</label>
     <textarea id="c-notes" placeholder="Anything worth remembering…">${esc(c.notes||'')}</textarea>
+    ${editing?'<button class="btn" id="c-dupe" style="width:100%;margin-top:12px;" title="Start a new comp with these settings">Duplicate</button>':''}
     <div class="sheet-actions">
       ${editing?'<button class="btn danger" id="c-del">Delete</button>':''}
       <button class="btn primary" id="c-save">Save</button>
@@ -2060,6 +2061,20 @@ function openCompSheet(comp){
         ok=afterWrite(await api('ct-write',{action:'save-comps',comps}));if(ok)toast('Added '+comps.length+' comps.');
       }
       if(!ok){saveBtn.disabled=false;saveBtn.textContent='Save';}
+    });
+    // Duplicate: reopen as "New comp" carrying the form's CURRENT values (unsaved tweaks
+    // included); no id, so saving creates a separate comp. The original is left untouched.
+    const dupeBtn=document.getElementById('c-dupe');
+    if(dupeBtn)dupeBtn.addEventListener('click',()=>{
+      openCompSheet({
+        person:document.getElementById('c-person').value.trim()||'Me',
+        title:document.getElementById('c-title').value.trim(),
+        casino:document.getElementById('c-casino').value.trim()||null,
+        single_use:single.classList.contains('on'),
+        valid_from:document.getElementById('c-from').value||null,
+        valid_to:document.getElementById('c-to').value||null,
+        dow:[...document.querySelectorAll('#c-dow .dow-btn.sel')].map(b=>Number(b.dataset.dow)),
+        notes:document.getElementById('c-notes').value.trim()||null});
     });
     if(editing){document.getElementById('c-del').addEventListener('click',async()=>{
       if(!await confirmDialog('Delete this comp?',{confirmLabel:'Delete',danger:true}))return;
