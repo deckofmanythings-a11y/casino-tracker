@@ -441,6 +441,37 @@
   .casino-color-row .ccr-name{min-width:0;flex:1;font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .casino-color-row input[type=color]{flex:0 0 auto;width:38px;height:34px;padding:2px;border-radius:9px;cursor:pointer;}
   .casino-color-row input.ccr-cat{flex:1 1 120px;min-width:90px;font-size:13px;padding:8px 10px;}
+  /* Comps calendar view */
+  .cmp-cdot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:middle;}
+  .cmp-filters{margin-bottom:12px;}
+  .cmp-flabel{font-size:11px;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted);margin:10px 2px 6px;}
+  .cmp-flabel:first-child{margin-top:0;}
+  .cmp-navrow{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:6px 0 10px;}
+  .cmp-nav{flex:0 0 auto;width:42px;padding:8px 0;border-radius:10px;font-size:18px;font-weight:800;cursor:pointer;
+    color:var(--text);background:var(--panel2);border:1px solid var(--border);}
+  .cmp-month{flex:1;text-align:center;font-size:15px;font-weight:800;}
+  .cmp-wdhead{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:4px;}
+  .cmp-wdhead div{text-align:center;font-size:11px;font-weight:700;color:var(--muted);}
+  .cmp-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;}
+  .cmp-cell{min-height:52px;border-radius:9px;padding:4px 3px;background:var(--panel2);border:1px solid var(--border);
+    display:flex;flex-direction:column;align-items:center;gap:2px;}
+  .cmp-cell.blank{background:transparent;border:none;}
+  .cmp-cell.has{cursor:pointer;}
+  .cmp-cell.today{border-color:var(--gold);box-shadow:0 0 0 1px var(--gold-dim) inset;}
+  .cmp-dnum{font-size:11px;font-weight:700;color:var(--muted);}
+  .cmp-cell.today .cmp-dnum{color:var(--gold);}
+  .cmp-amt{font-size:11px;font-weight:800;color:var(--gold);line-height:1.1;text-align:center;}
+  .cmp-sngl{font-size:8px;color:var(--muted);margin-left:1px;}
+  .cmp-1x{font-size:9px;font-weight:800;background:var(--panel2);border:1px solid var(--gold-dim);color:var(--muted);border-radius:6px;padding:0 5px;margin-left:6px;white-space:nowrap;}
+  .cmp-legend{font-size:10px;color:var(--muted);margin-top:10px;line-height:1.4;}
+  .cmp-day-total{display:flex;justify-content:space-between;align-items:center;font-size:14px;font-weight:700;
+    padding:10px 12px;border-radius:12px;background:var(--panel2);border:1px solid var(--gold-dim);margin-bottom:10px;}
+  .cmp-day-total b{font-size:18px;color:var(--gold);}
+  .cmp-day-grp{margin-top:10px;}
+  .cmp-day-ghead{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;margin-bottom:4px;}
+  .cmp-day-who{flex:1;min-width:0;}
+  .cmp-day-ghead b{flex:0 0 auto;color:var(--gold);}
+  .cmp-day-item{display:flex;justify-content:space-between;gap:10px;font-size:13px;color:var(--muted);padding:3px 0 3px 16px;}
 </style>
 </head>
 <body>
@@ -551,7 +582,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.28';
+const APP_VERSION='0.9.30';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -606,6 +637,9 @@ let lastJackpots=[];
 let statsData=null;
 let bonusShown=3;
 let showDoneComps=false; // Comps list: used/expired are hidden by default, this reveals them
+let compsView='list'; // Comps tab: 'list' (default, person-grouped) | 'calendar' (month grid of $ comp value)
+let compExCasinos=new Set(), compExPeople=new Set(); // Calendar filters: EXCLUDED casinos/people (empty = all in)
+let compCalMonth=null; // Calendar month cursor {y,m(1-12)}; set lazily to the month of state.today
 // Stats view prefs (Net/Avg per section + Combine) persist per-viewer via localStorage so the
 // page reopens the way it was left. Default to Average + Combined when nothing (valid) is stored.
 let byGameMode,byCasinoMode,lifetimeMode,combineVariants,byGameCat;
@@ -1819,7 +1853,23 @@ function renderBankroll(){
 //  Comps — per-person casino offers with an eligibility window, colour-coded by
 //  casino, surfaced through a once-a-day launch popup listing what's live today.
 // ═══════════════════════════════════════════════════════════════════════════
-function compColor(comp){const m=(state.comp_casinos||[]).find(c=>c.casino===comp.casino);return m?m.color:'#a9801f';}
+function compCasinoColor(casino){const m=(state.comp_casinos||[]).find(c=>c.casino===casino);return m?m.color:'#a9801f';}
+function compColor(comp){return compCasinoColor(comp.casino);}
+// A comp's dollar value: an explicit amount if present, else the first $ number parsed from the title.
+function compAmount(c){
+  if(c && c.amount!=null && c.amount!=='') return num(c.amount);
+  const m=String((c&&c.title)||'').match(/\$\s?(\d+(?:\.\d{1,2})?)/);
+  return m?num(m[1]):0;
+}
+// True for a SINGLE-USE comp eligible on more than one day: it appears on each eligible calendar
+// day but can only be redeemed once across its window (so the per-day totals don't "add up").
+function compSpansMulti(c){
+  if(!c||!c.single_use)return false;
+  const from=c.valid_from||state.today,to=c.valid_to||addDays(from,370);
+  let d=from,n=0;
+  for(let i=0;i<420&&d<=to;i++){const wd=compWeekday(d);if(!c.dow||!c.dow.length||c.dow.includes(wd)){if(++n>1)return true;}d=addDays(d,1);}
+  return false;
+}
 function compWeekday(dateStr){const [y,m,d]=dateStr.split('-').map(Number);return new Date(y,m-1,d).getDay();}
 function compAvailable(comp,dateStr){
   if(comp.valid_from && dateStr<comp.valid_from) return false;
@@ -1924,7 +1974,14 @@ function renderComps(){
       <button class="btn" id="comp-colors">Casino colours</button>
     </div>
   </div>`;
-  if(!comps.length){
+  // List | Calendar segmented toggle (both views keep the avail-card + toggle above).
+  html+=`<div class="seg" id="comps-view" style="margin:0 0 14px;">
+    <button type="button" data-cview="list"${compsView==='list'?' class="sel"':''}>List</button>
+    <button type="button" data-cview="calendar"${compsView==='calendar'?' class="sel"':''}>Calendar</button>
+  </div>`;
+  if(compsView==='calendar'){
+    html+=renderCompsCalendar();
+  }else if(!comps.length){
     html+=`<div class="empty">No comps yet. Add the offers you and your family have.</div>`;
   }else{
     // Used/expired comps are hidden by default so the list stays current; a toggle reveals
@@ -1950,6 +2007,76 @@ function renderComps(){
     const c=(state.comps||[]).find(x=>x.id===el.dataset.comp);if(c)openCompSheet(c);}));
   const dt=body.querySelector('[data-comp-donetoggle]');
   if(dt)dt.addEventListener('click',()=>{showDoneComps=!showDoneComps;renderComps();});
+  body.querySelectorAll('#comps-view [data-cview]').forEach(b=>b.addEventListener('click',()=>{
+    compsView=b.dataset.cview;renderComps();}));
+  if(compsView==='calendar'){
+    body.querySelectorAll('[data-cfcas]').forEach(b=>b.addEventListener('click',()=>{
+      const k=b.dataset.cfcas;if(compExCasinos.has(k))compExCasinos.delete(k);else compExCasinos.add(k);renderComps();}));
+    body.querySelectorAll('[data-cfper]').forEach(b=>b.addEventListener('click',()=>{
+      const k=b.dataset.cfper;if(compExPeople.has(k))compExPeople.delete(k);else compExPeople.add(k);renderComps();}));
+    body.querySelectorAll('[data-cmonth]').forEach(b=>b.addEventListener('click',()=>{
+      let {y,m}=compCalMonth;m+=num(b.dataset.cmonth);if(m<1){m=12;y--;}else if(m>12){m=1;y++;}
+      compCalMonth={y,m};renderComps();}));
+    body.querySelectorAll('[data-cday]').forEach(el=>el.addEventListener('click',()=>openCompDaySheet(el.dataset.cday)));
+  }
+}
+// Whether a comp passes the calendar's casino + person exclusion filters.
+function compFilterPass(c){return !compExCasinos.has(c.casino||'—') && !compExPeople.has(c.person||'—');}
+// Month grid of comp $ value per day, with casino/person filter chips and month nav.
+function renderCompsCalendar(){
+  const comps=state.comps||[];
+  const casinos=[];comps.forEach(c=>{const ca=c.casino||'—';if(!casinos.includes(ca))casinos.push(ca);});
+  const people=compPersons(comps);
+  if(!compCalMonth){const [y,m]=state.today.split('-').map(Number);compCalMonth={y,m};}
+  const {y,m}=compCalMonth;
+  const monthName=new Date(y,m-1,1).toLocaleDateString(undefined,{month:'long',year:'numeric'});
+  const firstDow=new Date(y,m-1,1).getDay(); // Sunday=0
+  const daysInMonth=new Date(y,m,0).getDate();
+  const WD=['S','M','T','W','T','F','S'];
+  const casChip=ca=>`<button type="button" class="gcat-pill${compExCasinos.has(ca)?'':' sel'}" data-cfcas="${esc(ca)}"><span class="cmp-cdot" style="background:${esc(compCasinoColor(ca))}"></span>${esc(ca)}</button>`;
+  const perChip=p=>`<button type="button" class="gcat-pill${compExPeople.has(p)?'':' sel'}" data-cfper="${esc(p)}">${esc(p)}</button>`;
+  let cells='',monthSpan=false;
+  for(let i=0;i<firstDow;i++)cells+=`<div class="cmp-cell blank"></div>`;
+  for(let d=1;d<=daysInMonth;d++){
+    const iso=`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    let tot=0,span=false;comps.forEach(c=>{if(compFilterPass(c)&&compAvailable(c,iso)){tot+=compAmount(c);if(compSpansMulti(c))span=true;}});
+    if(span)monthSpan=true;
+    const cls=`cmp-cell${iso===state.today?' today':''}${tot>0?' has':''}`;
+    cells+=`<div class="${cls}" data-cday="${iso}"><div class="cmp-dnum">${d}</div>${tot>0?`<div class="cmp-amt">${money(tot)}${span?'<sup class="cmp-sngl">†</sup>':''}</div>`:''}</div>`;
+  }
+  return `<div class="cmp-filters">
+    <div class="cmp-flabel">Casinos</div><div class="gcat-row">${casinos.map(casChip).join('')}</div>
+    <div class="cmp-flabel">People</div><div class="gcat-row">${people.map(perChip).join('')}</div>
+  </div>
+  <div class="cmp-navrow">
+    <button type="button" class="cmp-nav" data-cmonth="-1">‹</button>
+    <div class="cmp-month">${esc(monthName)}</div>
+    <button type="button" class="cmp-nav" data-cmonth="1">›</button>
+  </div>
+  <div class="cmp-wdhead">${WD.map(w=>`<div>${w}</div>`).join('')}</div>
+  <div class="cmp-grid">${cells}</div>
+  ${monthSpan?`<div class="cmp-legend"><sup>†</sup> single-use — one redemption across its dates (shown on each eligible day, so totals don't add up across days).</div>`:''}`;
+}
+// Day breakdown sheet: filtered comps grouped by person + casino, each with a subtotal, plus a grand total.
+function openCompDaySheet(iso){
+  const avail=(state.comps||[]).filter(c=>compFilterPass(c)&&compAvailable(c,iso));
+  if(!avail.length){openSheet(prettyDate(iso),`<div class="empty">No comps available this day.</div>`);return;}
+  const grand=avail.reduce((x,c)=>x+compAmount(c),0);
+  const groups={},order=[];
+  avail.forEach(c=>{const person=c.person||'—',casino=c.casino||'—',k=person+'\u0001'+casino;
+    if(!groups[k]){groups[k]={person,casino,list:[]};order.push(k);}groups[k].list.push(c);});
+  let html=`<div class="cmp-day-total">Grand total<b>${money(grand)}</b></div>`;
+  let anySpan=false;
+  order.forEach(k=>{const g=groups[k];const sub=g.list.reduce((x,c)=>x+compAmount(c),0);
+    html+=`<div class="cmp-day-grp">
+      <div class="cmp-day-ghead"><span class="comp-dot" style="background:${esc(compCasinoColor(g.casino))}"></span>
+        <span class="cmp-day-who">${esc(g.person)} · ${esc(g.casino)}</span><b>${money(sub)}</b></div>`;
+    g.list.forEach(c=>{const span=compSpansMulti(c);if(span)anySpan=true;
+      const badge=span?`<span class="cmp-1x" title="Single-use — one redemption any day ${esc(c.valid_from||'')}–${esc(c.valid_to||'open')}">1×</span>`:'';
+      html+=`<div class="cmp-day-item"><span>${esc(c.title||'Comp')}${badge}</span><span>${money(compAmount(c))}</span></div>`;});
+    html+=`</div>`;});
+  if(anySpan)html+=`<div class="cmp-legend"><span class="cmp-1x">1×</span> single-use — redeemable once across its date range (it also appears on its other eligible days).</div>`;
+  openSheet(prettyDate(iso),html);
 }
 function compRowHtml(c){
   const stt=compStatus(c);
@@ -2346,11 +2473,21 @@ function mockSeed(){
       {id:'cp1',person:'Me',casino:'Thunder Valley',title:'$50 Free Play',notes:null,single_use:false,valid_from:null,valid_to:null,dow:[new Date().getDay()],used:false,used_dates:[],created_at:t+'T00:00:00'},
       {id:'cp2',person:'Wife',casino:'Sky River',title:'Free buffet',notes:null,single_use:true,valid_from:todayLocal(),valid_to:todayLocal(),dow:null,used:false,used_dates:[],created_at:t+'T00:00:00'},
       {id:'cp3',person:'Son',casino:'Cache Creek',title:'$20 match play',notes:null,single_use:false,valid_from:null,valid_to:null,dow:[6],used:false,used_dates:[],created_at:t+'T00:00:00'},
+      // Any-day $ offer over a window — lights up a whole run of days on the calendar.
+      {id:'cp4',person:'Me',casino:'Thunder Valley',title:'$100 Free Play',notes:null,single_use:false,valid_from:dayAgo(5),valid_to:dayAgo(-20),dow:null,used:false,used_dates:[],created_at:t+'T00:00:00'},
+      // Weekend match play on a different person + casino.
+      {id:'cp5',person:'Wife',casino:'GSR',title:'$25 Match Play',notes:null,single_use:false,valid_from:null,valid_to:null,dow:[5,6],used:false,used_dates:[],created_at:t+'T00:00:00'},
+      // Single-use future offer — one specific day.
+      {id:'cp6',person:'Son',casino:'Red Hawk',title:'$15 Free Play',notes:null,single_use:true,valid_from:dayAgo(-2),valid_to:dayAgo(-2),dow:null,used:false,used_dates:[],created_at:t+'T00:00:00'},
+      // SINGLE-USE over a RANGE — appears on every day Oct 22–30 but redeemable only once (marked †/1×).
+      {id:'cp7',person:'Me',casino:'GSR',title:'$75 Free Play',notes:null,single_use:true,valid_from:dayAgo(3),valid_to:dayAgo(-5),dow:null,used:false,used_dates:[],created_at:t+'T00:00:00'},
     ],
     comp_casinos:[
       {casino:'Thunder Valley',color:'#c0392b',category:'Sacramento',notes:'$2 Progressive on UTH · has Bubble craps'},
       {casino:'Sky River',color:'#2f80ed',category:'Sacramento',notes:null},
       {casino:'Cache Creek',color:'#27ae60',category:'Capay',notes:null},
+      {casino:'GSR',color:'#8e44ad',category:'Reno',notes:null},
+      {casino:'Red Hawk',color:'#e67e22',category:'Placerville',notes:null},
     ],
   };
 }
