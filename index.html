@@ -450,18 +450,15 @@
   .cmp-nav{flex:0 0 auto;width:42px;padding:8px 0;border-radius:10px;font-size:18px;font-weight:800;cursor:pointer;
     color:var(--text);background:var(--panel2);border:1px solid var(--border);}
   .cmp-month{flex:1;text-align:center;font-size:15px;font-weight:800;}
-  .cmp-wdhead{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:4px;}
+  .cmp-wdhead{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:4px;}
   .cmp-wdhead div{text-align:center;font-size:11px;font-weight:700;color:var(--muted);}
-  .cmp-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;}
-  .cmp-cell{min-height:52px;border-radius:9px;padding:4px 3px;background:var(--panel2);border:1px solid var(--border);
-    display:flex;flex-direction:column;align-items:center;gap:2px;}
-  .cmp-cell.blank{background:transparent;border:none;}
-  .cmp-cell.has{cursor:pointer;}
-  .cmp-cell.today{border-color:var(--gold);box-shadow:0 0 0 1px var(--gold-dim) inset;}
-  .cmp-dnum{font-size:11px;font-weight:700;color:var(--muted);}
-  .cmp-cell.today .cmp-dnum{color:var(--gold);}
-  .cmp-amt{font-size:11px;font-weight:800;color:var(--gold);line-height:1.1;text-align:center;}
-  .cmp-legend{font-size:10px;color:var(--muted);margin-top:10px;line-height:1.4;}
+  /* Comps month-bars: one grid per week, day numbers on row 1, spanning comp bars on lanes below */
+  .cmp-wk{display:grid;grid-template-columns:repeat(7,1fr);grid-auto-rows:18px;gap:3px;margin-bottom:6px;}
+  .cmp-dnum{grid-row:1;font-size:11px;font-weight:700;color:var(--text);text-align:center;line-height:18px;cursor:pointer;}
+  .cmp-dnum.faint{color:var(--muted);opacity:.5;}
+  .cmp-dnum.today{color:var(--gold);background:var(--gold-dim);border-radius:6px;}
+  .cmp-bar{overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-size:10px;font-weight:700;color:#fff;
+    text-shadow:0 1px 1px rgba(0,0,0,.5);border-radius:5px;padding:0 5px;line-height:18px;cursor:pointer;}
   .cmp-day-total{display:flex;justify-content:space-between;align-items:center;font-size:14px;font-weight:700;
     padding:10px 12px;border-radius:12px;background:var(--panel2);border:1px solid var(--gold-dim);margin-bottom:10px;}
   .cmp-day-total b{font-size:18px;color:var(--gold);}
@@ -580,7 +577,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.31';
+const APP_VERSION='0.9.32';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -2007,11 +2004,14 @@ function renderComps(){
       let {y,m}=compCalMonth;m+=num(b.dataset.cmonth);if(m<1){m=12;y--;}else if(m>12){m=1;y++;}
       compCalMonth={y,m};renderComps();}));
     body.querySelectorAll('[data-cday]').forEach(el=>el.addEventListener('click',()=>openCompDaySheet(el.dataset.cday)));
+    body.querySelectorAll('[data-compbar]').forEach(el=>el.addEventListener('click',()=>{
+      const c=(state.comps||[]).find(x=>x.id===el.dataset.compbar);if(c)openCompSheet(c);}));
   }
 }
 // Whether a comp passes the calendar's casino + person exclusion filters.
 function compFilterPass(c){return !compExCasinos.has(c.casino||'—') && !compExPeople.has(c.person||'—');}
-// Month grid of comp $ value per day, with casino/person filter chips and month nav.
+// Google-Calendar-style month view: full Sun-start weeks, each comp a horizontal BAR
+// spanning its eligible days (consecutive runs), lane-stacked when runs overlap.
 function renderCompsCalendar(){
   const comps=state.comps||[];
   const casinos=[];comps.forEach(c=>{const ca=c.casino||'—';if(!casinos.includes(ca))casinos.push(ca);});
@@ -2019,18 +2019,46 @@ function renderCompsCalendar(){
   if(!compCalMonth){const [y,m]=state.today.split('-').map(Number);compCalMonth={y,m};}
   const {y,m}=compCalMonth;
   const monthName=new Date(y,m-1,1).toLocaleDateString(undefined,{month:'long',year:'numeric'});
-  const firstDow=new Date(y,m-1,1).getDay(); // Sunday=0
-  const daysInMonth=new Date(y,m,0).getDate();
   const WD=['S','M','T','W','T','F','S'];
+  const mPrefix=`${y}-${String(m).padStart(2,'0')}`;
   const casChip=ca=>`<button type="button" class="gcat-pill${compExCasinos.has(ca)?'':' sel'}" data-cfcas="${esc(ca)}"><span class="cmp-cdot" style="background:${esc(compCasinoColor(ca))}"></span>${esc(ca)}</button>`;
   const perChip=p=>`<button type="button" class="gcat-pill${compExPeople.has(p)?'':' sel'}" data-cfper="${esc(p)}">${esc(p)}</button>`;
-  let cells='';
-  for(let i=0;i<firstDow;i++)cells+=`<div class="cmp-cell blank"></div>`;
-  for(let d=1;d<=daysInMonth;d++){
-    const iso=`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-    let tot=0;comps.forEach(c=>{if(compFilterPass(c)&&compAvailable(c,iso))tot+=compAmount(c);});
-    const cls=`cmp-cell${iso===state.today?' today':''}${tot>0?' has':''}`;
-    cells+=`<div class="${cls}" data-cday="${iso}"><div class="cmp-dnum">${d}</div>${tot>0?`<div class="cmp-amt">${money(tot)}</div>`:''}</div>`;
+  // Visible range: whole weeks (Sun-start) covering the month.
+  const firstIso=`${mPrefix}-01`;
+  const start=addDays(firstIso,-compWeekday(firstIso));
+  const daysInMonth=new Date(y,m,0).getDate();
+  const lastIso=`${mPrefix}-${String(daysInMonth).padStart(2,'0')}`;
+  const end=addDays(lastIso,6-compWeekday(lastIso));
+  const fcomps=comps.filter(compFilterPass);
+  let weeksHtml='';
+  for(let cur=start;cur<=end;cur=addDays(cur,7)){
+    const days=[];for(let i=0;i<7;i++)days.push(addDays(cur,i));
+    // Row 1: day numbers (faint for adjacent-month days, highlight today).
+    let row1='';
+    days.forEach(iso=>{
+      const dn=num(iso.split('-')[2]);
+      const cls=`cmp-dnum${iso.slice(0,7)===mPrefix?'':' faint'}${iso===state.today?' today':''}`;
+      row1+=`<div class="${cls}" data-cday="${iso}">${dn}</div>`;
+    });
+    // Collect consecutive eligible-day runs per comp within this week.
+    const runs=[];
+    fcomps.forEach(c=>{let s=-1;
+      for(let i=0;i<7;i++){const ok=compAvailable(c,days[i]);
+        if(ok&&s<0)s=i;
+        if(s>=0&&(!ok||i===6)){runs.push({comp:c,start:s,end:ok?i:i-1});s=-1;}
+      }
+    });
+    // Greedy lane assignment: lowest lane whose columns don't overlap this run.
+    const lanes=[];
+    runs.forEach(r=>{let lane=0;
+      while(true){const occ=lanes[lane]||(lanes[lane]=[]);
+        if(occ.every(([a,b])=>r.end<a||r.start>b)){occ.push([r.start,r.end]);r.lane=lane;break;}
+        lane++;}
+    });
+    const bars=runs.map(r=>{const c=r.comp;
+      return `<div class="cmp-bar" data-compbar="${c.id}" style="grid-column:${r.start+1}/${r.end+2};grid-row:${r.lane+2};background:${esc(compCasinoColor(c.casino))};">${money(compAmount(c))} ${esc(c.title||'Comp')}</div>`;
+    }).join('');
+    weeksHtml+=`<div class="cmp-wk">${row1}${bars}</div>`;
   }
   return `<div class="cmp-filters">
     <div class="cmp-flabel">Casinos</div><div class="gcat-row">${casinos.map(casChip).join('')}</div>
@@ -2042,8 +2070,7 @@ function renderCompsCalendar(){
     <button type="button" class="cmp-nav" data-cmonth="1">›</button>
   </div>
   <div class="cmp-wdhead">${WD.map(w=>`<div>${w}</div>`).join('')}</div>
-  <div class="cmp-grid">${cells}</div>
-  <div class="cmp-legend">Each day's total is what you could redeem <b>that day</b>. Single-use offers valid over a range repeat on every eligible day, so don't add days together.</div>`;
+  ${weeksHtml}`;
 }
 // Day breakdown sheet: filtered comps grouped by person + casino, each with a subtotal, plus a grand total.
 function openCompDaySheet(iso){
