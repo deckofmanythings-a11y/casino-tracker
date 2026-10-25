@@ -461,8 +461,6 @@
   .cmp-dnum{font-size:11px;font-weight:700;color:var(--muted);}
   .cmp-cell.today .cmp-dnum{color:var(--gold);}
   .cmp-amt{font-size:11px;font-weight:800;color:var(--gold);line-height:1.1;text-align:center;}
-  .cmp-sngl{font-size:8px;color:var(--muted);margin-left:1px;}
-  .cmp-1x{font-size:9px;font-weight:800;background:var(--panel2);border:1px solid var(--gold-dim);color:var(--muted);border-radius:6px;padding:0 5px;margin-left:6px;white-space:nowrap;}
   .cmp-legend{font-size:10px;color:var(--muted);margin-top:10px;line-height:1.4;}
   .cmp-day-total{display:flex;justify-content:space-between;align-items:center;font-size:14px;font-weight:700;
     padding:10px 12px;border-radius:12px;background:var(--panel2);border:1px solid var(--gold-dim);margin-bottom:10px;}
@@ -582,7 +580,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.30';
+const APP_VERSION='0.9.31';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -1861,15 +1859,6 @@ function compAmount(c){
   const m=String((c&&c.title)||'').match(/\$\s?(\d+(?:\.\d{1,2})?)/);
   return m?num(m[1]):0;
 }
-// True for a SINGLE-USE comp eligible on more than one day: it appears on each eligible calendar
-// day but can only be redeemed once across its window (so the per-day totals don't "add up").
-function compSpansMulti(c){
-  if(!c||!c.single_use)return false;
-  const from=c.valid_from||state.today,to=c.valid_to||addDays(from,370);
-  let d=from,n=0;
-  for(let i=0;i<420&&d<=to;i++){const wd=compWeekday(d);if(!c.dow||!c.dow.length||c.dow.includes(wd)){if(++n>1)return true;}d=addDays(d,1);}
-  return false;
-}
 function compWeekday(dateStr){const [y,m,d]=dateStr.split('-').map(Number);return new Date(y,m-1,d).getDay();}
 function compAvailable(comp,dateStr){
   if(comp.valid_from && dateStr<comp.valid_from) return false;
@@ -2035,14 +2024,13 @@ function renderCompsCalendar(){
   const WD=['S','M','T','W','T','F','S'];
   const casChip=ca=>`<button type="button" class="gcat-pill${compExCasinos.has(ca)?'':' sel'}" data-cfcas="${esc(ca)}"><span class="cmp-cdot" style="background:${esc(compCasinoColor(ca))}"></span>${esc(ca)}</button>`;
   const perChip=p=>`<button type="button" class="gcat-pill${compExPeople.has(p)?'':' sel'}" data-cfper="${esc(p)}">${esc(p)}</button>`;
-  let cells='',monthSpan=false;
+  let cells='';
   for(let i=0;i<firstDow;i++)cells+=`<div class="cmp-cell blank"></div>`;
   for(let d=1;d<=daysInMonth;d++){
     const iso=`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-    let tot=0,span=false;comps.forEach(c=>{if(compFilterPass(c)&&compAvailable(c,iso)){tot+=compAmount(c);if(compSpansMulti(c))span=true;}});
-    if(span)monthSpan=true;
+    let tot=0;comps.forEach(c=>{if(compFilterPass(c)&&compAvailable(c,iso))tot+=compAmount(c);});
     const cls=`cmp-cell${iso===state.today?' today':''}${tot>0?' has':''}`;
-    cells+=`<div class="${cls}" data-cday="${iso}"><div class="cmp-dnum">${d}</div>${tot>0?`<div class="cmp-amt">${money(tot)}${span?'<sup class="cmp-sngl">†</sup>':''}</div>`:''}</div>`;
+    cells+=`<div class="${cls}" data-cday="${iso}"><div class="cmp-dnum">${d}</div>${tot>0?`<div class="cmp-amt">${money(tot)}</div>`:''}</div>`;
   }
   return `<div class="cmp-filters">
     <div class="cmp-flabel">Casinos</div><div class="gcat-row">${casinos.map(casChip).join('')}</div>
@@ -2055,7 +2043,7 @@ function renderCompsCalendar(){
   </div>
   <div class="cmp-wdhead">${WD.map(w=>`<div>${w}</div>`).join('')}</div>
   <div class="cmp-grid">${cells}</div>
-  ${monthSpan?`<div class="cmp-legend"><sup>†</sup> single-use — one redemption across its dates (shown on each eligible day, so totals don't add up across days).</div>`:''}`;
+  <div class="cmp-legend">Each day's total is what you could redeem <b>that day</b>. Single-use offers valid over a range repeat on every eligible day, so don't add days together.</div>`;
 }
 // Day breakdown sheet: filtered comps grouped by person + casino, each with a subtotal, plus a grand total.
 function openCompDaySheet(iso){
@@ -2066,16 +2054,12 @@ function openCompDaySheet(iso){
   avail.forEach(c=>{const person=c.person||'—',casino=c.casino||'—',k=person+'\u0001'+casino;
     if(!groups[k]){groups[k]={person,casino,list:[]};order.push(k);}groups[k].list.push(c);});
   let html=`<div class="cmp-day-total">Grand total<b>${money(grand)}</b></div>`;
-  let anySpan=false;
   order.forEach(k=>{const g=groups[k];const sub=g.list.reduce((x,c)=>x+compAmount(c),0);
     html+=`<div class="cmp-day-grp">
       <div class="cmp-day-ghead"><span class="comp-dot" style="background:${esc(compCasinoColor(g.casino))}"></span>
         <span class="cmp-day-who">${esc(g.person)} · ${esc(g.casino)}</span><b>${money(sub)}</b></div>`;
-    g.list.forEach(c=>{const span=compSpansMulti(c);if(span)anySpan=true;
-      const badge=span?`<span class="cmp-1x" title="Single-use — one redemption any day ${esc(c.valid_from||'')}–${esc(c.valid_to||'open')}">1×</span>`:'';
-      html+=`<div class="cmp-day-item"><span>${esc(c.title||'Comp')}${badge}</span><span>${money(compAmount(c))}</span></div>`;});
+    g.list.forEach(c=>{html+=`<div class="cmp-day-item"><span>${esc(c.title||'Comp')}</span><span>${money(compAmount(c))}</span></div>`;});
     html+=`</div>`;});
-  if(anySpan)html+=`<div class="cmp-legend"><span class="cmp-1x">1×</span> single-use — redeemable once across its date range (it also appears on its other eligible days).</div>`;
   openSheet(prettyDate(iso),html);
 }
 function compRowHtml(c){
@@ -2479,7 +2463,7 @@ function mockSeed(){
       {id:'cp5',person:'Wife',casino:'GSR',title:'$25 Match Play',notes:null,single_use:false,valid_from:null,valid_to:null,dow:[5,6],used:false,used_dates:[],created_at:t+'T00:00:00'},
       // Single-use future offer — one specific day.
       {id:'cp6',person:'Son',casino:'Red Hawk',title:'$15 Free Play',notes:null,single_use:true,valid_from:dayAgo(-2),valid_to:dayAgo(-2),dow:null,used:false,used_dates:[],created_at:t+'T00:00:00'},
-      // SINGLE-USE over a RANGE — appears on every day Oct 22–30 but redeemable only once (marked †/1×).
+      // SINGLE-USE over a RANGE — appears on every day Oct 22–30 but redeemable only once (the common case).
       {id:'cp7',person:'Me',casino:'GSR',title:'$75 Free Play',notes:null,single_use:true,valid_from:dayAgo(3),valid_to:dayAgo(-5),dow:null,used:false,used_dates:[],created_at:t+'T00:00:00'},
     ],
     comp_casinos:[
