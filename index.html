@@ -87,6 +87,7 @@
   .fast-chip{min-width:0;overflow:hidden;background:var(--panel);border:1px solid var(--border);
     border-radius:14px;padding:11px 13px;cursor:pointer;transition:transform .06s,border-color .15s;}
   .fast-chip:active{transform:scale(.96);}
+  .fast-chip.core-open{border-color:var(--gold);box-shadow:0 0 0 1px var(--gold);}
   .fast-chip .fc-name{font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .fast-chip .fc-sub{font-size:11px;color:var(--muted);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .fast-chip .fc-cat{font-size:15px;}
@@ -579,7 +580,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.33';
+const APP_VERSION='0.9.34';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -649,6 +650,7 @@ let byGameMode,byCasinoMode,lifetimeMode,combineVariants,byGameCat;
 function saveStatsView(){try{localStorage.setItem('ct_stats_view',
   JSON.stringify({byGame:byGameMode,byCasino:byCasinoMode,lifetime:lifetimeMode,combine:combineVariants,gameCat:byGameCat}));}catch(_){}}
 let openCat=null; // Today tab: which category's games are expanded (null = none)
+let openCore=null; // Today tab: which core game's variants are expanded inline (null = none)
 
 // ── Formatting helpers ─────────────────────────────────────────────────────
 function todayLocal(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
@@ -985,6 +987,36 @@ function favChip(g){
     <div class="fc-name">${esc(g.name)}</div>
     <div class="fc-sub">${sub}</div></div>`;
 }
+// Group games by core name (g.name), preserving first-seen order.
+function groupByCore(gs){const m={},order=[];
+  gs.forEach(g=>{const core=g.name||'';if(!m[core]){m[core]=[];order.push(core);}m[core].push(g);});
+  return order.map(core=>({core,items:m[core]}));}
+// A collapsed "core" tile standing in for a game that has multiple variants; tap expands them.
+function coreChip(core,items,rep,open){
+  const n=items.length,sub=`${n} variants ${open?'▴':'▾'}`;
+  const art=rep.image_url&&rep.image_url.indexOf('mock://')!==0;
+  if(art){
+    const attrs=rep.art_bg?`style="background-image:url(&quot;${rep.image_url}&quot;);background-color:${esc(rep.art_bg)};"`
+      :`data-arturl="${esc(rep.image_url)}" style="background-image:url(&quot;${rep.image_url}&quot;)"`;
+    return `<div class="fast-chip has-art${open?' core-open':''}" data-core="${esc(core)}" ${attrs}>
+      <div class="fc-scrim"></div>
+      <div class="fc-text"><div class="fc-name">${esc(core)}</div><div class="fc-sub">${sub}</div></div></div>`;
+  }
+  return `<div class="fast-chip${open?' core-open':''}" data-core="${esc(core)}">
+    <div class="fc-cat">${catIcon(rep.category)}</div>
+    <div class="fc-name">${esc(core)}</div>
+    <div class="fc-sub">${sub}</div></div>`;
+}
+// Render a game list as minimal tiles: one tile per core game; a core with >1 variants collapses
+// into a single expandable tile (openCore), its variants shown inline right after it when open.
+function renderGameTiles(gs){
+  return groupByCore(gs).map(grp=>{
+    if(grp.items.length===1)return favChip(grp.items[0]);
+    const rep=grp.items.find(g=>!g.variant)||grp.items[0];
+    const open=openCore===grp.core;
+    return coreChip(grp.core,grp.items,rep,open)+(open?grp.items.map(favChip).join(''):'');
+  }).join('');
+}
 function renderToday(){
   const sessions=state.sessions||[];
   const dayIn=sessions.reduce((s,x)=>s+num(x.buy_in_total),0);
@@ -1021,15 +1053,15 @@ function renderToday(){
   let panel='';
   if(openCat){
     const gs=games.filter(g=>g.category===openCat);
-    panel=gs.map(favChip).join('')+
+    panel=renderGameTiles(gs)+
       `<div class="fast-chip new" data-game="__new" data-newcat="${openCat}">+ New</div>`;
   }else{
     // Default (no category expanded): the games marked favorite (♥) on the Games tab,
-    // kept in the user's sort order. favChip emits data-game, resolved by the handler below.
+    // kept in the user's sort order. Tiles are grouped by core game (variants nest).
     const favs=games.filter(g=>g.favorite);
     if(favs.length)
       panel=`<div class="muted" style="grid-column:1/-1;font-size:11px;margin:2px 0 -2px;">♥ Favorites</div>`+
-        favs.map(favChip).join('');
+        renderGameTiles(favs);
     else
       panel=`<div class="muted" style="grid-column:1/-1;font-size:12px;padding:4px 2px;">No favorites yet — tap ♡ on a game in the Games tab to pin it here.</div>`;
   }
@@ -1037,7 +1069,9 @@ function renderToday(){
   paintArtBgs(fs);
   fs.querySelectorAll('#cat-games .fast-chip').forEach((el,i)=>{el.style.animationDelay=(i*34)+'ms';}); // stagger the reveal
   fs.querySelectorAll('[data-cat-open]').forEach(el=>el.addEventListener('click',()=>{
-    openCat=(openCat===el.dataset.catOpen)?null:el.dataset.catOpen;renderToday();}));
+    openCat=(openCat===el.dataset.catOpen)?null:el.dataset.catOpen;openCore=null;renderToday();}));
+  fs.querySelectorAll('[data-core]').forEach(el=>el.addEventListener('click',()=>{
+    openCore=(openCore===el.dataset.core)?null:el.dataset.core;renderToday();}));
   fs.querySelectorAll('[data-game]').forEach(el=>el.addEventListener('click',()=>{
     if(el.dataset.game==='__new')openSessionSheet(el.dataset.newcat?{category:el.dataset.newcat}:undefined);
     else openSessionSheet(games.find(g=>g.id===el.dataset.game));
@@ -2462,7 +2496,9 @@ function mockSeed(){
     games:[
       {id:'g1',name:'Lightning Link',category:'slot',default_denom:1,default_bet:2.5,sort_order:0,archived:false,favorite:true},
       {id:'g2',name:'Buffalo Gold',category:'slot',default_denom:0.01,default_bet:1.5,sort_order:1,archived:false,favorite:true},
-      {id:'g3',name:'Dragon Link',category:'slot',default_denom:0.05,default_bet:5,variant:'Happy & Prosperous',sort_order:2,archived:false},
+      {id:'g3',name:'Dragon Link',category:'slot',default_denom:0.05,default_bet:5,variant:'Happy & Prosperous',sort_order:2,archived:false,favorite:true},
+      {id:'g7',name:'Dragon Link',category:'slot',default_denom:0.05,default_bet:5,variant:'Autumn Moon',sort_order:6,archived:false,favorite:true},
+      {id:'g8',name:'Dragon Link',category:'slot',default_denom:0.01,default_bet:2,sort_order:7,archived:false,favorite:true},
       {id:'g4',name:'Blackjack',category:'table',default_denom:null,default_bet:null,default_buyin:300,sort_order:3,archived:false},
       {id:'g5',name:'Dbl Double Bonus',category:'video_poker',default_denom:0.25,default_bet:1.25,sort_order:4,archived:false},
       {id:'g6',name:'Craps',category:'bubble_craps',variant:'3 Point Molly',strategy:'Pass line with odds and two Come bets with odds at all times',default_denom:null,default_bet:null,default_buyin:100,sort_order:5,archived:false,favorite:true},
