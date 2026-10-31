@@ -140,6 +140,11 @@
     box-shadow:0 0 0 0 rgba(72,215,141,.6);animation:pulse 1.8s infinite;}
   @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(72,215,141,.5);}70%{box-shadow:0 0 0 7px rgba(72,215,141,0);}100%{box-shadow:0 0 0 0 rgba(72,215,141,0);}}
   .sc-meta{font-size:12px;color:var(--muted);margin-top:5px;}
+  .session-card.active.carryover{border-color:var(--gold);}
+  .session-card.active.carryover .live-dot{background:var(--gold);box-shadow:none;animation:none;}
+  .sc-carry{font-size:12px;color:var(--on-panel,var(--text));background:color-mix(in srgb, var(--gold) 16%, var(--panel));
+    border:1px solid color-mix(in srgb, var(--gold) 45%, transparent);border-radius:8px;padding:7px 9px;margin-top:8px;line-height:1.35;}
+  .sc-carry b{font-weight:700;}
   .sc-money{display:flex;gap:10px;margin:13px 0 4px;}
   .money-block{flex:1;background:var(--panel2);border:1px solid var(--border);border-radius:12px;padding:9px 11px;}
   .money-block label{font-size:10px;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);}
@@ -581,7 +586,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.36';
+const APP_VERSION='0.9.37';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -630,7 +635,7 @@ function readCache(){try{const s=localStorage.getItem(CACHE_KEY);return s?JSON.p
 let account=null;
 let userEmail=null;
 let booted=false;
-let state={today:todayLocal(),games:[],active_trip:null,active_trip_totals:null,sessions:[],stakes:[],comps:[],comp_casinos:[],recent_games:[]};
+let state={today:todayLocal(),games:[],active_trip:null,active_trip_totals:null,sessions:[],carryover_open:[],stakes:[],comps:[],comp_casinos:[],recent_games:[]};
 let currentTab='today';
 let lastJackpots=[];
 let statsData=null;
@@ -654,7 +659,13 @@ let openCat=null; // Today tab: which category's games are expanded (null = none
 let openCore=null; // Today tab: which core game's variants are expanded inline (null = none)
 
 // ── Formatting helpers ─────────────────────────────────────────────────────
-function todayLocal(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
+// The tracker's "gambling day" rolls over at 3am local, not midnight: a night of play that
+// runs past 12am still belongs to the day it started (session_date is stamped from this), so
+// a session no longer gets stranded the moment the clock ticks over. Before 3am, "today" is
+// still the previous calendar date. Everything keys off this one function. (The 3 is inlined
+// rather than a const — todayLocal runs at top-level init before any const below would exist.)
+function todayLocal(){const d=new Date();if(d.getHours()<3)d.setDate(d.getDate()-1);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
 function num(v){return Number(v||0);}
 // Always show cents (two decimal places) on every dollar amount.
 function money(n){
@@ -936,7 +947,7 @@ async function doSignOut(){
   try{await sb.auth.signOut();}catch(_){}
   try{localStorage.removeItem(CACHE_KEY);}catch(_){}
   account=null;booted=false;userEmail=null;
-  state={today:todayLocal(),games:[],active_trip:null,active_trip_totals:null,sessions:[],stakes:[],comps:[],comp_casinos:[],recent_games:[]};
+  state={today:todayLocal(),games:[],active_trip:null,active_trip_totals:null,sessions:[],carryover_open:[],stakes:[],comps:[],comp_casinos:[],recent_games:[]};
   $('app').classList.remove('show');
   showAuthScreen('login');
 }
@@ -1097,29 +1108,33 @@ function renderToday(){
   // Most-recent first (sessions arrive started_at ascending from the server).
   const byNewest=(a,b)=>String(b.started_at||'').localeCompare(String(a.started_at||''));
 
-  // Active session cards
+  // Active session cards. Carryover = open sessions that began on a PRIOR day (crossed midnight);
+  // they stay continuable here but count toward their own start day, not today's totals above.
   const activeWrap=document.getElementById('active-sessions');
+  const carry=(state.carryover_open||[]).slice().sort(byNewest);
   const open=sessions.filter(isOpen).slice().sort(byNewest);
-  activeWrap.innerHTML=open.map(renderActiveCard).join('');
+  activeWrap.innerHTML=carry.map(s=>renderActiveCard(s,true)).join('')+open.map(s=>renderActiveCard(s,false)).join('');
   bindActiveCards();
 
   // Closed sessions
   const closed=sessions.filter(s=>!isOpen(s)).slice().sort(byNewest);
+  const hasActive=open.length>0||carry.length>0;
   const list=document.getElementById('today-sessions');
-  if(closed.length===0&&open.length===0){list.innerHTML='<div class="empty">No sessions yet today.<br>Tap a game above to start one.</div>';}
+  if(closed.length===0&&!hasActive){list.innerHTML='<div class="empty">No sessions yet today.<br>Tap a game above to start one.</div>';}
   else if(closed.length===0){list.innerHTML='<div class="empty">No closed sessions yet today.</div>';}
   else list.innerHTML=closed.map(sessRow).join('');
   list.querySelectorAll('[data-sess]').forEach(el=>el.addEventListener('click',()=>openEditSession(el.dataset.sess)));
 }
 
-function renderActiveCard(s){
+function renderActiveCard(s,carry){
   const net=sessNet(s);const bonuses=s.ct_bonuses||[];
   const meta=[s.denom!=null?money(s.denom)+' denom':null,s.bet_size!=null?money(s.bet_size)+' bet':null,s.casino].filter(Boolean).join(' · ');
-  return `<div class="card session-card active" data-active="${s.id}">
+  return `<div class="card session-card active${carry?' carryover':''}" data-active="${s.id}">
     <div class="sc-head">
       <div class="sc-title"><span class="live-dot"></span>${esc(s.game_name)} <span class="cat-chip">${catLabel(s.category)}</span></div>
       <button class="icon-btn" data-edit="${s.id}">⋯</button>
     </div>
+    ${carry?`<div class="sc-carry">⏮ Carried over from <b>${prettyDate(s.session_date)}</b> — still open. Cashing out records it on that day.</div>`:''}
     ${meta?`<div class="sc-meta">${esc(meta)}</div>`:''}
     <div class="sc-money">
       <div class="money-block"><label>Bought in</label><div class="val">${money(s.buy_in_total)}</div></div>
@@ -1178,7 +1193,7 @@ function bindActiveCards(){
     const r=await api('ct-write',{action:'set-bonus-jackpot',id:el.dataset.jptoggle,is_jackpot:el.dataset.jpval==='1'});
     if(r&&r.ok){applyBootstrap(r.bootstrap);cacheState();renderToday();}}));
 }
-function findSession(id){return (state.sessions||[]).find(s=>s.id===id);}
+function findSession(id){return (state.sessions||[]).find(s=>s.id===id)||(state.carryover_open||[]).find(s=>s.id===id);}
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  Bottom-sheet modal
@@ -2509,7 +2524,8 @@ function openGameSheet(game,seed){
 let mockDB=null;
 function mockSeed(){
   const t=todayLocal();
-  const dayAgo=(n)=>{const d=new Date();d.setDate(d.getDate()-n);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
+  // Days relative to the GAMBLING today (t), so seeds stay consistent even when tested 12am–3am.
+  const dayAgo=(n)=>{const[y,m,dd]=t.split('-').map(Number);const d=new Date(y,m-1,dd);d.setDate(d.getDate()-n);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
   let sid=0;const S=(o)=>({id:'s'+(++sid),account_id:'me',trip_id:'t1',game_id:null,notes:null,strategy:null,craps_small:false,craps_all:false,craps_tall:false,started_at:o.session_date+'T12:00:00',
     buyins:[],bonuses:[],denom:null,bet_size:null,casino:'Bellagio',cash_out:null,...o});
   const withBuyins=(s,amts)=>{s.buyins=amts.map((a,i)=>({id:s.id+'b'+i,session_id:s.id,amount:a}));s.buy_in_total=amts.reduce((x,y)=>x+y,0);return s;};
@@ -2534,6 +2550,8 @@ function mockSeed(){
       withBonus(withBuyins(S({game_name:'Buffalo Gold',category:'slot',denom:0.01,bet_size:1.5,session_date:t,cash_out:420}),[100]),[{amount:1500,base_bet:1.5}]),
       withBuyins(S({game_name:'Blackjack',category:'table',session_date:t,cash_out:60}),[100]),
       withBuyins(S({game_name:'Craps — 3 Point Molly',category:'bubble_craps',session_date:t,cash_out:null,strategy:'Pass line with odds and two Come bets with odds at all times',craps_small:true,craps_all:true}),[100]),
+      // Cross-midnight carryover: an OPEN craps session started last night at a different casino.
+      withBuyins(S({game_name:'Craps — Iron Cross',category:'bubble_craps',session_date:dayAgo(1),cash_out:null,casino:'Cache Creek',started_at:dayAgo(1)+'T23:40:00',strategy:'Iron cross'}),[200]),
       withBonus(withBuyins(S({game_name:'Dragon Link',category:'slot',denom:0.05,bet_size:5,session_date:dayAgo(1),cash_out:900,trip_id:'t3'}),[300]),[{amount:2000,base_bet:5}]),
       withBuyins(S({game_name:'Blackjack',category:'table',session_date:dayAgo(1),cash_out:80,casino:'Bellagio',trip_id:'t3'}),[200]),
       withBonus(withBuyins(S({game_name:'Buffalo Gold',category:'slot',denom:0.01,bet_size:0.75,session_date:dayAgo(2),cash_out:40,casino:'Aria',trip_id:'t2'}),[150]),[{amount:120,base_bet:0.75}]),
@@ -2570,6 +2588,9 @@ function mockBootstrap(today){
   const active_trip=mockDB.trips.find(t=>!t.ended_at)||null;
   const sessions=mockDB.sessions.filter(s=>s.session_date===today)
     .map(s=>({...s,ct_buyins:s.buyins,ct_bonuses:s.bonuses}));
+  // Carryover: open sessions (cash_out null) started on a prior day — stay continuable on Today.
+  const carryover_open=mockDB.sessions.filter(s=>s.session_date!==today&&(s.cash_out===null||s.cash_out===undefined))
+    .map(s=>({...s,ct_buyins:s.buyins,ct_bonuses:s.bonuses}));
   let active_trip_totals=null;
   if(active_trip){const st=active_trip.started_at||'';
     const ts=mockDB.sessions.filter(s=>!st||(s.started_at||'')>=st);
@@ -2583,7 +2604,7 @@ function mockBootstrap(today){
   // Theme the app by the active trip's casino, or the most recent trip's when none is active.
   const lastTrip=mockDB.trips.slice().sort((a,b)=>String(b.started_at||'').localeCompare(String(a.started_at||'')))[0];
   const theme_casino=(active_trip&&active_trip.casino)||(lastTrip&&lastTrip.casino)||null;
-  return {today,games,active_trip,active_trip_totals,sessions,stakes:(mockDB.stakes||[]).slice(),
+  return {today,games,active_trip,active_trip_totals,sessions,carryover_open,stakes:(mockDB.stakes||[]).slice(),
     comps:(mockDB.comps||[]).slice(),comp_casinos:(mockDB.comp_casinos||[]).slice(),recent_games,theme_casino};
 }
 function mockRecompute(s){s.buy_in_total=s.buyins.reduce((x,b)=>x+num(b.amount),0);}
