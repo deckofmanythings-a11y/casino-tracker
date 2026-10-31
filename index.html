@@ -329,6 +329,11 @@
   #signout-row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:22px;
     padding-top:16px;border-top:1px solid var(--border);}
   #signout-row .so-email{font-size:12px;color:var(--muted);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  #settings-block{margin-top:22px;padding-top:16px;border-top:1px solid var(--border);}
+  .set-h{font-size:15px;font-weight:700;margin:0 2px 10px;letter-spacing:.2px;}
+  .set-row{display:flex;flex-direction:column;gap:8px;}
+  .set-label label{font-size:14px;font-weight:600;display:block;}
+  .set-label .set-sub{font-size:11px;color:var(--muted);margin-top:3px;line-height:1.35;}
 
   /* ═══════════════════ MARBLE THEME — light stone + shiny gold-bevel edges ═══════════════════
      Appended as an override layer: later source wins for equal specificity, so this restyles
@@ -558,6 +563,14 @@
     <h1 style="font-size:22px;margin:6px 2px 10px;">Fast-Select Games</h1>
     <div id="games-body"></div>
     <button class="btn primary btn-lg" style="margin-top:14px;" data-add-game>+ Add a game</button>
+    <div id="settings-block">
+      <h2 class="set-h">Settings</h2>
+      <div class="set-row">
+        <div class="set-label"><label for="set-rollover">New day starts at</label>
+          <div class="set-sub">Play before this time counts toward the previous day, so a night that runs past midnight stays on one day.</div></div>
+        <select id="set-rollover" class="set-select"></select>
+      </div>
+    </div>
     <div id="signout-row">
       <span class="so-email" id="so-email"></span>
       <button class="btn danger" style="flex:0 0 auto;padding:8px 14px;" id="so-btn">Sign out</button>
@@ -586,7 +599,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.37';
+const APP_VERSION='0.9.38';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -659,13 +672,27 @@ let openCat=null; // Today tab: which category's games are expanded (null = none
 let openCore=null; // Today tab: which core game's variants are expanded inline (null = none)
 
 // ── Formatting helpers ─────────────────────────────────────────────────────
-// The tracker's "gambling day" rolls over at 3am local, not midnight: a night of play that
-// runs past 12am still belongs to the day it started (session_date is stamped from this), so
-// a session no longer gets stranded the moment the clock ticks over. Before 3am, "today" is
-// still the previous calendar date. Everything keys off this one function. (The 3 is inlined
-// rather than a const — todayLocal runs at top-level init before any const below would exist.)
-function todayLocal(){const d=new Date();if(d.getHours()<3)d.setDate(d.getDate()-1);
+// The tracker's "gambling day" rolls over at a user-set hour (default 3am local, not midnight):
+// a night of play that runs past 12am still belongs to the day it started (session_date is stamped
+// from this), so a session no longer gets stranded the moment the clock ticks over. Before the
+// rollover hour, "today" is still the previous calendar date. Everything keys off this one function.
+// rolloverHour is a hoisted function (not a const) reading localStorage live — todayLocal runs at
+// top-level init before any const/let below it would be initialized, so a const here would TDZ-throw.
+// Key 'ct_rollover_hour' is inlined (not a const) for the same top-level-init reason as above.
+function rolloverHour(){try{const v=parseInt(localStorage.getItem('ct_rollover_hour'),10);if(v>=0&&v<=23)return v;}catch(_){}return 3;}
+function todayLocal(){const d=new Date();if(d.getHours()<rolloverHour())d.setDate(d.getDate()-1);
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
+// Friendly label for a rollover hour (0–23) → "12:00 AM (midnight)", "3:00 AM", etc.
+function rolloverLabel(h){const ap=h<12?'AM':'PM';let hr=h%12;if(hr===0)hr=12;return `${hr}:00 ${ap}${h===0?' (midnight)':''}`;}
+// Persist a new rollover hour, recompute which calendar date is "today", and refresh the view.
+async function setRolloverHour(h){
+  try{localStorage.setItem('ct_rollover_hour',String(h));}catch(_){}
+  const prev=state.today;state.today=todayLocal();
+  try{const r=await api('ct-data',{view:'today',today:state.today});
+    if(r&&r.ok&&r.bootstrap){applyBootstrap(r.bootstrap);cacheState();}}catch(_){}
+  if(currentTab==='today')renderToday();
+  if(prev!==state.today&&currentTab==='history')loadHistory();
+}
 function num(v){return Number(v||0);}
 // Always show cents (two decimal places) on every dollar amount.
 function money(n){
@@ -2369,6 +2396,13 @@ function renderGames(){
   const body=document.getElementById('games-body');
   const so=document.getElementById('so-email');if(so)so.textContent=MOCK?'demo mode':(userEmail||(account&&account.email)||'');
   const sob=document.getElementById('so-btn');if(sob&&!sob._bound){sob._bound=1;sob.addEventListener('click',doSignOut);}
+  // Day-rollover setting: hours 12am–11am are the only sensible "day start" choices.
+  const rsel=document.getElementById('set-rollover');
+  if(rsel){
+    const cur=rolloverHour();
+    rsel.innerHTML=Array.from({length:12},(_,h)=>`<option value="${h}"${h===cur?' selected':''}>${rolloverLabel(h)}</option>`).join('');
+    if(!rsel._bound){rsel._bound=1;rsel.addEventListener('change',()=>setRolloverHour(parseInt(rsel.value,10)));}
+  }
   const games=state.games||[];
   if(games.length===0){body.innerHTML='<div class="empty">No fast-select games yet.<br>Add the machines/tables you play most.</div>';return;}
   const hint=games.length>1?'<div class="reorder-hint">Use ▲▼ to reorder — this is your Today tap order.</div>':'';
