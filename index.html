@@ -599,7 +599,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.38';
+const APP_VERSION='0.9.39';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -1861,15 +1861,19 @@ function netAvgSection(key,list,mode){
     }
     if(byGameCat!=='all')base=list.filter(g=>g.category===byGameCat);
   }
-  const src=(isGame&&combineVariants)?combineByCore(base):base;
+  const src0=(isGame&&combineVariants)?combineByCore(base):base;
+  // In Average mode, drop single-session games: one session isn't an average, and a lone
+  // big win/loss stretches the bar scale so games with a real track record look tiny.
+  const src=(isGame&&mode==='avg')?src0.filter(g=>num(g.count)>1):src0;
   const divKey=key==='casino'?'trip_count':'count';
   const rows=src.map(g=>({name:g.name,val:groupVal(g,mode,divKey),category:g.category})).sort((a,b)=>b.val-a.val);
   const maxAbs=Math.max(1,...rows.map(r=>Math.abs(r.val)));
   const label=(mode==='avg'?'Average':'Net')+' by '+key;
   const tog=`<span class="na-toggle" data-na="${key}"><button type="button" class="${mode==='net'?'sel':''}" data-na-mode="net">Net</button><button type="button" class="${mode==='avg'?'sel':''}" data-na-mode="avg">Avg</button></span>`;
   const combine=isGame?`<button type="button" class="na-combine${combineVariants?' sel':''}" data-na-combine title="Combine variants of the same game">Combine</button>`:'';
+  const emptyMsg=(isGame&&mode==='avg')?'No games with more than one session yet.':'No games of this type yet.';
   const body=rows.length?rows.map(r=>barV(r.name,r.val,maxAbs,isGame?r.category:null)).join('')
-    :'<div class="muted" style="padding:8px 2px;font-size:12px;">No games of this type yet.</div>';
+    :`<div class="muted" style="padding:8px 2px;font-size:12px;">${emptyMsg}</div>`;
   return `<div class="section-label na-label"><span>${label}</span><span class="na-ctrls">${combine}${tog}</span></div>${filterHtml}<div class="card">${body}</div>`;
 }
 function barV(name,val,maxAbs,category){
