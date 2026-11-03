@@ -177,9 +177,10 @@
   .lad-current[data-zone="surv"]{background:color-mix(in srgb,#2e7d46 15%,var(--panel));border-color:color-mix(in srgb,#2e7d46 45%,transparent);}
   .lad-current[data-zone="atk"]{background:color-mix(in srgb,#b06a1b 15%,var(--panel));border-color:color-mix(in srgb,#b06a1b 48%,transparent);}
   .lad-current[data-zone="max"]{background:color-mix(in srgb,#b3271f 15%,var(--panel));border-color:color-mix(in srgb,#b3271f 48%,transparent);}
-  .lc-top{display:flex;align-items:baseline;justify-content:space-between;gap:8px;}
-  .lc-name{font-weight:800;font-size:14px;letter-spacing:.3px;text-transform:uppercase;}
-  .lc-band{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;}
+  .lc-top{display:flex;align-items:baseline;justify-content:space-between;gap:10px;}
+  .lc-name{font-weight:700;font-size:12px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);flex:0 0 auto;}
+  /* The balance band is the glance target — make it the biggest, highest-contrast thing in the card. */
+  .lc-band{font-size:23px;font-weight:800;color:var(--text);font-variant-numeric:tabular-nums;letter-spacing:.2px;line-height:1.05;text-align:right;}
   .lc-bet{display:flex;align-items:center;gap:8px;margin-top:6px;}
   .lc-denom{font-weight:800;font-size:12px;padding:2px 9px;border-radius:999px;background:var(--gold);color:var(--on-gold);font-variant-numeric:tabular-nums;}
   .lc-attempt{font-weight:800;font-size:16px;color:var(--text);font-variant-numeric:tabular-nums;}
@@ -640,7 +641,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.41';
+const APP_VERSION='0.9.42';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
