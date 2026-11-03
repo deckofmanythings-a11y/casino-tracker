@@ -168,6 +168,10 @@
   .lad-caret{font-size:11px;color:var(--muted);transition:transform .15s;}
   .ladder.collapsed .lad-caret{transform:rotate(-90deg);}
   .ladder.collapsed .lad-body{display:none;}
+  /* Minimized: shrink the whole thing to a left-aligned pill button. */
+  .ladder.collapsed{display:inline-flex;width:auto;border-radius:999px;background:var(--panel);}
+  .ladder.collapsed .lad-head{padding:7px 14px;gap:7px;}
+  .ladder.collapsed .lad-persess{display:none;}
   .lad-body{padding:0 12px 12px;display:flex;flex-direction:column;gap:10px;}
   .lad-current{border-radius:10px;padding:9px 11px;border:1px solid var(--border);}
   .lad-current[data-zone="surv"]{background:color-mix(in srgb,#2e7d46 15%,var(--panel));border-color:color-mix(in srgb,#2e7d46 45%,transparent);}
@@ -636,7 +640,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.40';
+const APP_VERSION='0.9.41';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -915,9 +919,13 @@ const LADDER=[
   {name:'Attack Max',  band:'$1,025+',      denom:1,    bet:25.00, floor:1025, lock:650, live:375, zone:'max', note:'Every +$100 = +$100 locked'},
 ];
 function ladderDenom(d){return d<1?(Math.round(d*100)+'¢'):('$'+d);}
-function ladderOpen(){try{return localStorage.getItem('ct_ladder_open')!=='0';}catch(_){return true;}}
-// Normalize a session's stored rung/lock to valid in-range indices.
-function ladderState(s){const n=LADDER.length-1,cl=v=>{v=parseInt(v,10);return v>=0?Math.min(v,n):0;};
+// Starts minimized behind a pill; only an explicit '1' (user opened it) expands it.
+function ladderOpen(){try{return localStorage.getItem('ct_ladder_open')==='1';}catch(_){return false;}}
+// A fresh session (no stored rung yet) starts on Cruise — the ~$100 buy-in level.
+const LADDER_START=LADDER.findIndex(r=>r.name==='Cruise');
+// Normalize a session's stored rung/lock to valid in-range indices; unset ⇒ Cruise.
+// An explicit 0 (Survival) is respected — only a missing/invalid value falls back to the start.
+function ladderState(s){const n=LADDER.length-1,cl=v=>{const i=parseInt(v,10);return i>=0?Math.min(i,n):LADDER_START;};
   return {rung:cl(s.ladder_rung),lock:cl(s.ladder_lock)};}
 function ladderWidget(s){
   const open=ladderOpen();
@@ -971,8 +979,7 @@ function bindLadder(root,s){
   const setRung=(v,persist)=>{
     const rung=Math.max(0,Math.min(LADDER.length-1,v));
     s.ladder_rung=rung;
-    const curLock=parseInt(s.ladder_lock,10)||0;
-    if(rung>curLock)s.ladder_lock=rung;
+    if(rung>ladderState(s).lock)s.ladder_lock=rung;
     renderLadderDynamic(root,s);
     if(persist)saveLadder(s);
   };
