@@ -647,7 +647,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.44';
+const APP_VERSION='0.9.45';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -1683,7 +1683,9 @@ function openBonusSheet(sessionId){
     }
     amt.addEventListener('input',recalc);bet.addEventListener('input',recalc);
     jp.addEventListener('click',()=>{jpManual=true;jp.classList.toggle('on');});
-    amt.focus();recalc();
+    // No bet size on the session yet → prompt for it first (the multiple is useless without it);
+    // otherwise jump straight to the win amount as usual.
+    (baseBet===''?bet:amt).focus();recalc();
     const boBtn=document.getElementById('bo-add');
     boBtn.addEventListener('click',async()=>{
       if(!amt.value||boBtn.disabled)return;
