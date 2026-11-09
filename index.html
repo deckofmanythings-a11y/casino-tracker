@@ -338,9 +338,9 @@
     background:rgba(13,20,17,.92);backdrop-filter:blur(12px);border-top:1px solid var(--border);
     padding-bottom:var(--safe-bottom);}
   #nav .nav-inner{display:flex;width:100%;max-width:520px;}
-  .nav-btn{flex:1;background:none;border:none;color:var(--muted);padding:9px 4px 8px;display:flex;
+  .nav-btn{flex:1;background:none;border:none;color:var(--muted);padding:9px 2px 8px;display:flex;
     flex-direction:column;align-items:center;gap:4px;font-size:10px;font-weight:600;letter-spacing:.3px;
-    transition:color .15s;}
+    white-space:nowrap;transition:color .15s;}
   .nav-btn .ic{display:flex;line-height:0;}
   .nav-btn .ic svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.7;
     stroke-linecap:round;stroke-linejoin:round;}
@@ -529,6 +529,48 @@
   .cmp-day-who{flex:1;min-width:0;}
   .cmp-day-ghead b{flex:0 0 auto;color:var(--gold);}
   .cmp-day-item{display:flex;justify-content:space-between;gap:10px;font-size:13px;color:var(--muted);padding:3px 0 3px 16px;}
+  /* ── Hit List ──────────────────────────────────────────── */
+  .hl-intro{font-size:13px;color:var(--muted);line-height:1.45;margin:0 2px 10px;}
+  .hl-list{display:flex;flex-direction:column;gap:10px;margin-top:14px;}
+  .hl-card{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:10px 10px 7px;}
+  .hl-card.done{opacity:.62;}
+  .hl-top{display:flex;align-items:flex-start;gap:10px;}
+  .hl-thumb{width:46px;height:46px;flex:0 0 auto;border-radius:11px;background:var(--panel2);display:flex;
+    align-items:center;justify-content:center;font-size:22px;background-size:cover;background-position:center;}
+  .hl-main{flex:1;min-width:0;background:none;border:none;text-align:left;padding:1px 0;cursor:pointer;
+    color:var(--text);display:flex;flex-direction:column;gap:2px;}
+  .hl-name{font-weight:700;font-size:15px;line-height:1.15;}
+  .hl-card.done .hl-name{text-decoration:line-through;}
+  .hl-var{font-weight:600;color:var(--muted);font-size:13px;}
+  .hl-sub{font-size:12px;color:var(--muted);}
+  .hl-go{font-size:11px;font-weight:700;color:var(--gold);margin-top:1px;}
+  .hl-card.done .hl-go{color:var(--muted);}
+  .hl-x{flex:0 0 auto;background:none;border:none;color:var(--faint);font-size:15px;cursor:pointer;padding:2px 3px;line-height:1;}
+  .hl-done-btn{flex:0 0 auto;align-self:center;width:28px;height:28px;border-radius:50%;border:2px solid var(--gold-dim);
+    background:none;color:var(--on-gold);font-size:15px;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+  .hl-done-btn.on{background:var(--gold);border-color:var(--gold);}
+  .hl-challenges{display:flex;flex-direction:column;gap:3px;margin:8px 0 2px;padding-left:2px;}
+  .hl-ch{display:flex;align-items:center;gap:6px;}
+  .hl-ch-main{flex:1;min-width:0;display:flex;align-items:center;gap:9px;background:none;border:none;
+    text-align:left;cursor:pointer;padding:3px 0;color:var(--text);}
+  .hl-chk{flex:0 0 auto;width:19px;height:19px;border-radius:6px;border:2px solid var(--gold-dim);
+    display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;color:var(--on-gold);}
+  .hl-ch.on .hl-chk{background:var(--gold);border-color:var(--gold);}
+  .hl-ch.on .hl-chk::after{content:'✓';}
+  .hl-ch-t{font-size:13px;line-height:1.25;}
+  .hl-ch.on .hl-ch-t{text-decoration:line-through;color:var(--muted);}
+  .hl-ch-x{flex:0 0 auto;background:none;border:none;color:var(--faint);font-size:15px;cursor:pointer;padding:0 4px;line-height:1;}
+  .hl-addch{margin-top:3px;background:none;border:none;color:var(--gold);font-size:12px;font-weight:700;cursor:pointer;padding:4px 2px;}
+  .hl-done-head{display:flex;align-items:center;justify-content:space-between;margin:22px 2px 2px;
+    font-size:12px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);}
+  .hl-clear{background:none;border:none;color:var(--loss);font-size:12px;font-weight:700;cursor:pointer;text-transform:none;letter-spacing:0;}
+  .hl-picklist{display:flex;flex-direction:column;gap:8px;max-height:56vh;overflow-y:auto;}
+  .hl-pick{display:flex;align-items:center;gap:10px;width:100%;background:var(--panel2);border:1px solid var(--border);
+    border-radius:12px;padding:8px 10px;cursor:pointer;color:var(--text);text-align:left;}
+  .hl-pick .hl-thumb{width:38px;height:38px;font-size:18px;border-radius:9px;}
+  .hl-pick-add{margin-left:auto;flex:0 0 auto;font-size:12px;font-weight:800;color:var(--gold);}
+  .hl-pick.added{opacity:.6;}
+  .hl-pick.added .hl-pick-add{color:var(--win);}
 </style>
 </head>
 <body>
@@ -624,6 +666,12 @@
       <button class="btn danger" style="flex:0 0 auto;padding:8px 14px;" id="so-btn">Sign out</button>
     </div>
   </div>
+
+  <!-- ── HIT LIST ──────────────────────────────────────────── -->
+  <div id="screen-hitlist" class="screen">
+    <h1 style="font-size:22px;margin:6px 2px 10px;">Hit List</h1>
+    <div id="hitlist-body"></div>
+  </div>
 </div>
 
 <div id="sheet"><div class="sheet-panel">
@@ -639,6 +687,7 @@
   <button class="nav-btn" data-tab="bankroll"><span class="ic"><svg viewBox="0 0 24 24"><path d="M4 8V6.5A2 2 0 0 1 6 4.5h11"/><path d="M3.5 8h15a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/><circle class="dot" cx="16.5" cy="13.5" r="1.3"/></svg></span>Bankroll</button>
   <button class="nav-btn" data-tab="comps"><span class="ic"><svg viewBox="0 0 24 24"><path d="M4 8h16v3a1.6 1.6 0 0 0 0 2v3H4v-3a1.6 1.6 0 0 0 0-2z"/><path d="M12 8v8" stroke-dasharray="1.6 2.2"/><path d="M9.5 8 12 5l2.5 3"/></svg></span>Comps</button>
   <button class="nav-btn" data-tab="games"><span class="ic"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3.5"/><circle class="dot" cx="9" cy="9" r="1.2"/><circle class="dot" cx="12" cy="12" r="1.2"/><circle class="dot" cx="15" cy="15" r="1.2"/></svg></span>Games</button>
+  <button class="nav-btn" data-tab="hitlist"><span class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.3"/><circle class="dot" cx="12" cy="12" r="1.3"/></svg></span>Hit List</button>
 </div></nav>
 
 <script>
@@ -647,7 +696,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.45';
+const APP_VERSION='0.9.46';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -688,7 +737,8 @@ function cacheState(){
   try{localStorage.setItem(CACHE_KEY,JSON.stringify({uid:account&&account.auth_user_id,account,bootstrap:{
     today:state.today,games:state.games,active_trip:state.active_trip,
     active_trip_totals:state.active_trip_totals,sessions:state.sessions,stakes:state.stakes,
-    comps:state.comps,comp_casinos:state.comp_casinos,recent_games:state.recent_games,theme_casino:state.theme_casino},ts:Date.now()}));}catch(_){}
+    comps:state.comps,comp_casinos:state.comp_casinos,recent_games:state.recent_games,theme_casino:state.theme_casino,
+    hitlist:state.hitlist},ts:Date.now()}));}catch(_){}
 }
 function readCache(){try{const s=localStorage.getItem(CACHE_KEY);return s?JSON.parse(s):null;}catch(_){return null;}}
 
@@ -696,7 +746,7 @@ function readCache(){try{const s=localStorage.getItem(CACHE_KEY);return s?JSON.p
 let account=null;
 let userEmail=null;
 let booted=false;
-let state={today:todayLocal(),games:[],active_trip:null,active_trip_totals:null,sessions:[],carryover_open:[],stakes:[],comps:[],comp_casinos:[],recent_games:[]};
+let state={today:todayLocal(),games:[],active_trip:null,active_trip_totals:null,sessions:[],carryover_open:[],stakes:[],comps:[],comp_casinos:[],recent_games:[],hitlist:[]};
 let currentTab='today';
 let lastJackpots=[];
 let statsData=null;
@@ -1119,7 +1169,7 @@ async function doSignOut(){
   try{await sb.auth.signOut();}catch(_){}
   try{localStorage.removeItem(CACHE_KEY);}catch(_){}
   account=null;booted=false;userEmail=null;
-  state={today:todayLocal(),games:[],active_trip:null,active_trip_totals:null,sessions:[],carryover_open:[],stakes:[],comps:[],comp_casinos:[],recent_games:[]};
+  state={today:todayLocal(),games:[],active_trip:null,active_trip_totals:null,sessions:[],carryover_open:[],stakes:[],comps:[],comp_casinos:[],recent_games:[],hitlist:[]};
   $('app').classList.remove('show');
   showAuthScreen('login');
 }
@@ -1159,6 +1209,7 @@ function setTab(tab){
   if(tab==='bankroll')renderBankroll();
   if(tab==='comps')renderComps();
   if(tab==='games')renderGames();
+  if(tab==='hitlist')renderHitlist();
 }
 document.querySelectorAll('.nav-btn').forEach(b=>b.addEventListener('click',()=>setTab(b.dataset.tab)));
 
@@ -1447,6 +1498,7 @@ function afterWrite(resp){
   else if(currentTab==='games')renderGames();
   else if(currentTab==='history')loadHistory();
   else if(currentTab==='stats')loadStats();
+  else if(currentTab==='hitlist')renderHitlist();
   return true;
 }
 
@@ -2607,6 +2659,163 @@ async function moveGame(id,dir){
   const resp=await api('ct-write',{action:'reorder-games',ids});
   if(resp&&resp.ok){applyBootstrap(resp.bootstrap);renderGames();}
 }
+
+// ── Hit List (scavenger hunt) ────────────────────────────────────────────────
+// A standalone checklist of games to play this trip, each with optional challenges
+// ("Get a straight flush"). Not tied to a day or casino. An item is complete when it has
+// challenges and they're ALL ticked, or (no challenges) its manual done flag is set.
+function hitlistComplete(it){const ch=it.challenges||[];return ch.length?ch.every(c=>c.done):!!it.done;}
+
+function renderHitlist(){
+  const body=document.getElementById('hitlist-body');if(!body)return;
+  const list=(state.hitlist||[]).slice();
+  const active=list.filter(it=>!hitlistComplete(it));
+  const done=list.filter(it=>hitlistComplete(it));
+  let html=`<div class="hl-intro">Games you want to hit this trip. Tap a game to start a session; tick off challenges as you land them. Not tied to any day or casino.</div>
+    <button class="btn primary btn-lg" id="hl-add" style="margin-top:2px;">+ Add a game</button>`;
+  if(!list.length){
+    html+=`<div class="empty" style="margin-top:18px;">Your Hit List is empty.<br>Add a game you want to play, then give it challenges like “Get a straight flush.”</div>`;
+  }else{
+    html+=`<div class="hl-list">${active.map(hitlistCard).join('')||'<div class="muted" style="font-size:13px;padding:6px 2px;">Everything’s checked off — nice. 🎯</div>'}</div>`;
+    if(done.length){
+      html+=`<div class="hl-done-head"><span>Done · ${done.length}</span><button class="hl-clear" id="hl-clear">Clear done</button></div>
+        <div class="hl-list">${done.map(hitlistCard).join('')}</div>`;
+    }
+  }
+  body.innerHTML=html;
+  paintArtBgs(body);
+  body.querySelector('#hl-add')?.addEventListener('click',openHitlistAddSheet);
+  body.querySelector('#hl-clear')?.addEventListener('click',clearHitlistDone);
+  const find=id=>(state.hitlist||[]).find(x=>x.id===id);
+  body.querySelectorAll('[data-hlplay]').forEach(el=>el.addEventListener('click',()=>{const it=find(el.dataset.hlplay);if(it)startFromHitlist(it);}));
+  body.querySelectorAll('[data-hldel]').forEach(el=>el.addEventListener('click',()=>removeHitlist(el.dataset.hldel)));
+  body.querySelectorAll('[data-hldone]').forEach(el=>el.addEventListener('click',()=>toggleHitDone(el.dataset.hldone)));
+  body.querySelectorAll('[data-hladdch]').forEach(el=>el.addEventListener('click',()=>openAddChallengeSheet(el.dataset.hladdch)));
+  body.querySelectorAll('[data-chtoggle]').forEach(el=>el.addEventListener('click',()=>toggleChallenge(el.dataset.chtoggle,el.dataset.chid)));
+  body.querySelectorAll('[data-chdel]').forEach(el=>el.addEventListener('click',()=>deleteChallenge(el.dataset.chdel,el.dataset.chid)));
+}
+
+function hitlistCard(it){
+  const done=hitlistComplete(it);
+  const ch=it.challenges||[];
+  const [core,variant]=splitGameName(it.game_name);
+  const g=(state.games||[]).find(x=>x.id===it.game_id);
+  const art=g&&g.image_url&&g.image_url.indexOf('mock://')!==0;
+  const thumb=art?(g.art_bg?`style="background-image:url(&quot;${g.image_url}&quot;);background-color:${esc(g.art_bg)};"`:`data-arturl="${esc(g.image_url)}" style="background-image:url(&quot;${g.image_url}&quot;)"`):'';
+  const noCh=ch.length===0;
+  const chHtml=ch.map(c=>`<div class="hl-ch${c.done?' on':''}">
+    <button type="button" class="hl-ch-main" data-chtoggle="${it.id}" data-chid="${c.id}"><span class="hl-chk"></span><span class="hl-ch-t">${esc(c.text)}</span></button>
+    <button type="button" class="hl-ch-x" data-chdel="${it.id}" data-chid="${c.id}" aria-label="Delete challenge">×</button></div>`).join('');
+  const sub=`${catLabel(it.category||'slot')}${ch.length?` · ${ch.filter(c=>c.done).length}/${ch.length} done`:''}`;
+  return `<div class="hl-card${done?' done':''}" data-hl="${it.id}">
+    <div class="hl-top">
+      <div class="hl-thumb" ${thumb}>${art?'':catIcon(it.category||'slot')}</div>
+      <button type="button" class="hl-main" data-hlplay="${it.id}">
+        <div class="hl-name">${esc(core)}${variant?` <span class="hl-var">${esc(variant)}</span>`:''}</div>
+        <div class="hl-sub">${sub}</div>
+        <div class="hl-go">▶ ${done?'Play again':'Tap to start a session'}</div>
+      </button>
+      ${noCh?`<button type="button" class="hl-done-btn${it.done?' on':''}" data-hldone="${it.id}" aria-label="Mark done">${it.done?'✓':''}</button>`:''}
+      <button type="button" class="hl-x" data-hldel="${it.id}" aria-label="Remove">🗑</button>
+    </div>
+    ${ch.length?`<div class="hl-challenges">${chHtml}</div>`:''}
+    <button type="button" class="hl-addch" data-hladdch="${it.id}">+ challenge</button>
+  </div>`;
+}
+
+// Tap a Hit List game -> open the New Session sheet prefilled. Use the real catalog game
+// (for denom/bet/buy-in defaults) when it still exists; otherwise fall back to the snapshot.
+function startFromHitlist(it){
+  const g=(state.games||[]).find(x=>x.id===it.game_id);
+  if(g){openSessionSheet(g);return;}
+  const [core,variant]=splitGameName(it.game_name);
+  openSessionSheet({name:core,variant:variant||'',category:it.category||'slot'});
+}
+
+// Pick a game from the catalog to add. Stays open so several can be added in a row.
+function openHitlistAddSheet(){
+  const games=state.games||[];
+  if(!games.length){openSheet('Add a game',`<div class="empty">No games yet.<br>Add the machines/tables you play in the Games tab first, then build your Hit List.</div>
+    <div class="sheet-actions"><button class="btn primary" data-close-sheet>OK</button></div>`);return;}
+  const onList=id=>(state.hitlist||[]).some(h=>h.game_id===id);
+  const rows=games.map(g=>{const art=g.image_url&&g.image_url.indexOf('mock://')!==0;
+    const thumb=art?(g.art_bg?`style="background-image:url(&quot;${g.image_url}&quot;);background-color:${esc(g.art_bg)};"`:`data-arturl="${esc(g.image_url)}" style="background-image:url(&quot;${g.image_url}&quot;)"`):'';
+    const added=onList(g.id);
+    return `<button type="button" class="hl-pick${added?' added':''}" data-pick="${g.id}">
+      <div class="hl-thumb" ${thumb}>${art?'':catIcon(g.category)}</div>
+      <div style="min-width:0;"><div class="sr-name">${esc(g.name)}</div>
+        <div class="sr-sub">${g.variant?esc(g.variant)+' · ':''}${catLabel(g.category)}</div></div>
+      <span class="hl-pick-add">${added?'✓ Added':'+ Add'}</span></button>`;}).join('');
+  openSheet('Add to Hit List',`<div class="muted" style="font-size:13px;margin-bottom:8px;">Pick a game to add — you can set challenges after. Add as many as you like.</div>
+    <div class="hl-picklist">${rows}</div>
+    <div class="sheet-actions"><button class="btn primary" data-close-sheet>Done</button></div>`,()=>{
+    paintArtBgs(document.getElementById('sheet-body'));
+    document.querySelectorAll('[data-pick]').forEach(el=>el.addEventListener('click',async()=>{
+      const g=(state.games||[]).find(x=>x.id===el.dataset.pick);if(!g)return;
+      el.classList.add('added');el.querySelector('.hl-pick-add').textContent='✓ Added'; // optimistic
+      await addHitlistGame(g);
+    }));
+  });
+}
+
+async function addHitlistGame(g){
+  const r=await api('ct-write',{action:'hitlist-add',game_id:g.id,
+    game_name:g.variant?`${g.name} — ${g.variant}`:g.name,category:g.category});
+  if(r&&r.ok){applyBootstrap(r.bootstrap);cacheState();if(currentTab==='hitlist')renderHitlist();}
+  else toast((r&&r.message)||'Could not add to Hit List.');
+}
+
+// Fire-and-forget persistence of an item's challenges+done after an optimistic local change
+// (the DOM is already updated), mirroring the Attack Ladder's save pattern.
+async function saveHitlistItem(it){
+  const r=await api('ct-write',{action:'hitlist-update',id:it.id,challenges:it.challenges||[],done:!!it.done});
+  if(r&&r.ok)cacheState(); else toast((r&&r.message)||'Could not save Hit List change.');
+}
+
+function toggleChallenge(itemId,chId){
+  const it=(state.hitlist||[]).find(x=>x.id===itemId);if(!it)return;
+  const c=(it.challenges||[]).find(x=>x.id===chId);if(!c)return;
+  c.done=!c.done;renderHitlist();saveHitlistItem(it);
+}
+function deleteChallenge(itemId,chId){
+  const it=(state.hitlist||[]).find(x=>x.id===itemId);if(!it)return;
+  it.challenges=(it.challenges||[]).filter(c=>c.id!==chId);renderHitlist();saveHitlistItem(it);
+}
+function toggleHitDone(itemId){
+  const it=(state.hitlist||[]).find(x=>x.id===itemId);if(!it)return;
+  it.done=!it.done;renderHitlist();saveHitlistItem(it);
+}
+function openAddChallengeSheet(itemId){
+  openSheet('Add a challenge',`
+    <label class="field">Challenge</label>
+    <input id="hl-ch-input" placeholder="e.g. Get a straight flush" autocomplete="off" maxlength="200">
+    <div class="sheet-actions"><button class="btn" data-close-sheet>Cancel</button>
+      <button class="btn primary" id="hl-ch-add">Add</button></div>
+  `,()=>{
+    const inp=document.getElementById('hl-ch-input');setTimeout(()=>inp.focus(),50);
+    const add=()=>{const text=inp.value.trim();if(!text)return;
+      const it=(state.hitlist||[]).find(x=>x.id===itemId);if(!it)return;
+      it.challenges=it.challenges||[];it.challenges.push({id:genKey(),text,done:false});
+      closeSheet();renderHitlist();saveHitlistItem(it);};
+    document.getElementById('hl-ch-add').addEventListener('click',add);
+    inp.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();add();}});
+  });
+}
+async function removeHitlist(itemId){
+  if(!await confirmDialog('Remove this game from your Hit List?',{confirmLabel:'Remove',danger:true}))return;
+  state.hitlist=(state.hitlist||[]).filter(x=>x.id!==itemId);renderHitlist();
+  const r=await api('ct-write',{action:'hitlist-remove',id:itemId});
+  if(r&&r.ok){applyBootstrap(r.bootstrap);cacheState();renderHitlist();}
+}
+async function clearHitlistDone(){
+  const ids=(state.hitlist||[]).filter(hitlistComplete).map(x=>x.id);
+  if(!ids.length)return;
+  if(!await confirmDialog(`Clear ${ids.length} completed item${ids.length===1?'':'s'} from the Hit List?`,{confirmLabel:'Clear',danger:true}))return;
+  state.hitlist=(state.hitlist||[]).filter(x=>!ids.includes(x.id));renderHitlist();
+  const r=await api('ct-write',{action:'hitlist-remove',ids});
+  if(r&&r.ok){applyBootstrap(r.bootstrap);cacheState();renderHitlist();}
+}
+
 // seed: optional prefill for a NEW game (used by Duplicate). It never carries an id,
 // so saving it always creates a new catalog entry.
 function openGameSheet(game,seed){
@@ -2776,6 +2985,13 @@ function mockSeed(){
       {casino:'GSR',color:'#8e44ad',category:'Reno',notes:null},
       {casino:'Red Hawk',color:'#e67e22',category:'Placerville',notes:null},
     ],
+    hitlist:[
+      {id:'h1',account_id:'me',game_id:'g5',game_name:'Dbl Double Bonus',category:'video_poker',done:false,sort_order:0,created_at:t+'T00:00:00',
+        challenges:[{id:'hc1',text:'Get a straight flush',done:false},{id:'hc2',text:'Hit four aces with a kicker',done:true}]},
+      {id:'h2',account_id:'me',game_id:'g2',game_name:'Buffalo Gold',category:'slot',done:false,sort_order:1,created_at:t+'T00:00:00',
+        challenges:[{id:'hc3',text:'Trigger a triple-pop bonus',done:false}]},
+      {id:'h3',account_id:'me',game_id:'g6',game_name:'Craps — 3 Point Molly',category:'bubble_craps',done:false,sort_order:2,created_at:t+'T00:00:00',challenges:[]},
+    ],
   };
 }
 function mockBootstrap(today){
@@ -2800,10 +3016,12 @@ function mockBootstrap(today){
   const lastTrip=mockDB.trips.slice().sort((a,b)=>String(b.started_at||'').localeCompare(String(a.started_at||'')))[0];
   const theme_casino=(active_trip&&active_trip.casino)||(lastTrip&&lastTrip.casino)||null;
   return {today,games,active_trip,active_trip_totals,sessions,carryover_open,stakes:(mockDB.stakes||[]).slice(),
-    comps:(mockDB.comps||[]).slice(),comp_casinos:(mockDB.comp_casinos||[]).slice(),recent_games,theme_casino};
+    comps:(mockDB.comps||[]).slice(),comp_casinos:(mockDB.comp_casinos||[]).slice(),recent_games,theme_casino,
+    hitlist:(mockDB.hitlist||[]).slice()};
 }
 function mockRecompute(s){s.buy_in_total=s.buyins.reduce((x,b)=>x+num(b.amount),0);}
 function mockId(p){return p+Math.random().toString(36).slice(2,8);}
+function mockChallenges(v){return Array.isArray(v)?v.slice(0,50).map(c=>({id:(c&&c.id)||mockId('hc'),text:String((c&&c.text)||'').trim().slice(0,200),done:!!(c&&c.done)})).filter(c=>c.text):[];}
 async function mockApi(name,payload){
   const today=payload.today||todayLocal();
   if(name==='ct-auth'||name==='ct-whoami')return {ok:true,account:mockDB.account,bootstrap:mockBootstrap(today)};
@@ -2883,6 +3101,11 @@ function mockWrite(b){
     const cleanNote=v=>typeof v==='string'?(v.trim()||null):null;
     if(m){if('color' in b)m.color=b.color;if('category' in b)m.category=b.category??null;if('notes' in b)m.notes=cleanNote(b.notes);}
     else mockDB.comp_casinos.push({casino:b.casino,color:('color' in b)?b.color:'#c9a24e',category:b.category??null,notes:('notes' in b)?cleanNote(b.notes):null});}
+  else if(a==='hitlist-add'){const n=(mockDB.hitlist||[]).length;(mockDB.hitlist=mockDB.hitlist||[]).push({id:mockId('h'),account_id:'me',
+    game_id:b.game_id||null,game_name:(b.game_name||'').trim()||'Game',category:b.category||null,
+    challenges:mockChallenges(b.challenges),done:b.done===true,sort_order:n,created_at:new Date().toISOString()});}
+  else if(a==='hitlist-update'){const it=(mockDB.hitlist||[]).find(x=>x.id===b.id);if(it){if('challenges' in b)it.challenges=mockChallenges(b.challenges);if('done' in b)it.done=b.done===true;}}
+  else if(a==='hitlist-remove'){const ids=Array.isArray(b.ids)?b.ids:(b.id?[b.id]:[]);mockDB.hitlist=(mockDB.hitlist||[]).filter(x=>!ids.includes(x.id));}
 }
 function mockStats(){
   const sessions=mockDB.sessions;const closed=sessions.filter(s=>s.cash_out!=null);
