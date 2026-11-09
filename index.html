@@ -560,6 +560,10 @@
   .hl-ch-t{font-size:13px;line-height:1.25;}
   .hl-ch.on .hl-ch-t{text-decoration:line-through;color:var(--muted);}
   .hl-ch-x{flex:0 0 auto;background:none;border:none;color:var(--faint);font-size:15px;cursor:pointer;padding:0 4px;line-height:1;}
+  /* Hit List challenges surfaced inside a Today session card */
+  .sc-hitch{margin-top:11px;border-top:1px dashed var(--border);padding-top:9px;display:flex;flex-direction:column;gap:3px;}
+  .sc-hitch-h{display:flex;align-items:center;gap:6px;font-size:10.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin-bottom:2px;}
+  .sc-hitch-h .sch-count{color:var(--gold);}
   .hl-addch{margin-top:3px;background:none;border:none;color:var(--gold);font-size:12px;font-weight:700;cursor:pointer;padding:4px 2px;}
   .hl-done-head{display:flex;align-items:center;justify-content:space-between;margin:22px 2px 2px;
     font-size:12px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);}
@@ -696,7 +700,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.46';
+const APP_VERSION='0.9.47';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -1352,6 +1356,13 @@ function renderToday(){
 function renderActiveCard(s,carry){
   const net=sessNet(s);const bonuses=s.ct_bonuses||[];
   const meta=[s.denom!=null?money(s.denom)+' denom':null,s.bet_size!=null?money(s.bet_size)+' bet':null,s.casino].filter(Boolean).join(' · ');
+  // If this game is on the Hit List with challenges, surface them right here so they can be
+  // ticked off mid-play without leaving the Today tab. Toggles persist to the same item.
+  const hit=hitlistForSession(s);const hch=hit?(hit.challenges||[]):[];
+  const hitHtml=hch.length?`<div class="sc-hitch">
+    <div class="sc-hitch-h">🎯 Hit List <span class="sch-count">${hch.filter(c=>c.done).length}/${hch.length}</span></div>
+    ${hch.map(c=>`<div class="hl-ch${c.done?' on':''}"><button type="button" class="hl-ch-main" data-schtoggle="${hit.id}" data-schid="${c.id}"><span class="hl-chk"></span><span class="hl-ch-t">${esc(c.text)}</span></button></div>`).join('')}
+  </div>`:'';
   return `<div class="card session-card active${carry?' carryover':''}" data-active="${s.id}">
     <div class="sc-head">
       <div class="sc-title"><span class="live-dot"></span>${esc(s.game_name)} <span class="cat-chip">${catLabel(s.category)}</span></div>
@@ -1370,6 +1381,7 @@ function renderActiveCard(s,carry){
     </div>
     ${s.category==='slot'?ladderWidget(s):''}
     ${bonuses.length?`<div class="bonus-list">${bonuses.map(b=>bonusRow(b)).join('')}</div>`:''}
+    ${hitHtml}
     ${s.strategy?`<div class="sc-notes"><b style="font-style:normal;">Strategy:</b> ${esc(s.strategy)}</div>`:''}
     ${s.category==='bubble_craps'?`<div class="cb-row sc-cb" data-cardcb="${s.id}">
       <button type="button" class="cb-pill${s.craps_small?' sel':''}" data-ck="craps_small">Smalls</button>
@@ -1411,6 +1423,7 @@ function bindActiveCards(){
     const ok=afterWrite(await api('ct-write',{action:'save-session',id,[key]:newVal}));
     if(!ok){btn.classList.toggle('sel',!newVal);btn.disabled=false;} // revert on failure
   }));
+  w.querySelectorAll('[data-schtoggle]').forEach(el=>el.addEventListener('click',()=>toggleHitChallengeFromSession(el.dataset.schtoggle,el.dataset.schid)));
   w.querySelectorAll('[data-ladder]').forEach(el=>{const s=findSession(el.dataset.ladder);if(s)bindLadder(el,s);});
   w.querySelectorAll('[data-delbonus]').forEach(b=>b.addEventListener('click',async()=>{
     const r=await api('ct-write',{action:'delete-bonus',id:b.dataset.delbonus});afterWrite(r);}));
@@ -1419,6 +1432,20 @@ function bindActiveCards(){
     if(r&&r.ok){applyBootstrap(r.bootstrap);cacheState();renderToday();}}));
 }
 function findSession(id){return (state.sessions||[]).find(s=>s.id===id)||(state.carryover_open||[]).find(s=>s.id===id);}
+// Match a session to its Hit List entry: by soft-linked game id first, else by game name.
+function hitlistForSession(s){
+  const list=state.hitlist||[];if(!list.length)return null;
+  if(s.game_id){const m=list.find(h=>h.game_id&&h.game_id===s.game_id);if(m)return m;}
+  const norm=x=>String(x||'').trim().toLowerCase();
+  return list.find(h=>norm(h.game_name)===norm(s.game_name))||null;
+}
+// Tick a Hit List challenge from a session card. Optimistic; persists to the shared item,
+// and re-renders Today so the card (and any open Hit List tab state) reflects it.
+function toggleHitChallengeFromSession(itemId,chId){
+  const it=(state.hitlist||[]).find(x=>x.id===itemId);if(!it)return;
+  const c=(it.challenges||[]).find(x=>x.id===chId);if(!c)return;
+  c.done=!c.done;renderToday();saveHitlistItem(it);
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  Bottom-sheet modal
