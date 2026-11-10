@@ -549,6 +549,18 @@
   .hl-done-btn{flex:0 0 auto;align-self:center;width:28px;height:28px;border-radius:50%;border:2px solid var(--gold-dim);
     background:none;color:var(--on-gold);font-size:15px;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:center;}
   .hl-done-btn.on{background:var(--gold);border-color:var(--gold);}
+  /* Standalone general-challenge (goal) card */
+  .hl-addrow{display:flex;gap:8px;margin-top:2px;}
+  .hl-addrow .btn{flex:1;}
+  .hl-goal{display:flex;align-items:center;gap:11px;padding:11px 11px;}
+  .hl-goal-chk{flex:0 0 auto;width:26px;height:26px;border-radius:50%;border:2px solid var(--gold-dim);
+    background:none;color:var(--on-gold);font-size:14px;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+  .hl-goal-chk.on{background:var(--gold);border-color:var(--gold);}
+  .hl-goal-chk.on::after{content:'✓';}
+  .hl-goal-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;}
+  .hl-goal-tag{font-size:10px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--gold);}
+  .hl-goal-t{font-size:14px;line-height:1.25;color:var(--text);}
+  .hl-goal.done .hl-goal-t{text-decoration:line-through;color:var(--muted);}
   .hl-challenges{display:flex;flex-direction:column;gap:3px;margin:8px 0 2px;padding-left:2px;}
   .hl-ch{display:flex;align-items:center;gap:6px;}
   .hl-ch-main{flex:1;min-width:0;display:flex;align-items:center;gap:9px;background:none;border:none;
@@ -700,7 +712,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.47';
+const APP_VERSION='0.9.48';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -1434,7 +1446,7 @@ function bindActiveCards(){
 function findSession(id){return (state.sessions||[]).find(s=>s.id===id)||(state.carryover_open||[]).find(s=>s.id===id);}
 // Match a session to its Hit List entry: by soft-linked game id first, else by game name.
 function hitlistForSession(s){
-  const list=state.hitlist||[];if(!list.length)return null;
+  const list=(state.hitlist||[]).filter(h=>!isGoal(h));if(!list.length)return null;
   if(s.game_id){const m=list.find(h=>h.game_id&&h.game_id===s.game_id);if(m)return m;}
   const norm=x=>String(x||'').trim().toLowerCase();
   return list.find(h=>norm(h.game_name)===norm(s.game_name))||null;
@@ -2692,16 +2704,21 @@ async function moveGame(id,dir){
 // ("Get a straight flush"). Not tied to a day or casino. An item is complete when it has
 // challenges and they're ALL ticked, or (no challenges) its manual done flag is set.
 function hitlistComplete(it){const ch=it.challenges||[];return ch.length?ch.every(c=>c.done):!!it.done;}
+// A "goal" is a standalone challenge not tied to a specific game ("Hit a Must Hit By on any
+// Phoenix Link"). Marked by the sentinel category 'goal'; its text lives in game_name and it
+// completes via the manual done flag. It never links to a session.
+function isGoal(it){return it&&it.category==='goal';}
 
 function renderHitlist(){
   const body=document.getElementById('hitlist-body');if(!body)return;
   const list=(state.hitlist||[]).slice();
   const active=list.filter(it=>!hitlistComplete(it));
   const done=list.filter(it=>hitlistComplete(it));
-  let html=`<div class="hl-intro">Games you want to hit this trip. Tap a game to start a session; tick off challenges as you land them. Not tied to any day or casino.</div>
-    <button class="btn primary btn-lg" id="hl-add" style="margin-top:2px;">+ Add a game</button>`;
+  let html=`<div class="hl-intro">Games you want to hit this trip. Tap a game to start a session; tick off challenges as you land them. General challenges aren’t tied to a game. Not tied to any day or casino.</div>
+    <div class="hl-addrow"><button class="btn primary" id="hl-add">+ Add a game</button>
+      <button class="btn" id="hl-add-goal">+ General challenge</button></div>`;
   if(!list.length){
-    html+=`<div class="empty" style="margin-top:18px;">Your Hit List is empty.<br>Add a game you want to play, then give it challenges like “Get a straight flush.”</div>`;
+    html+=`<div class="empty" style="margin-top:18px;">Your Hit List is empty.<br>Add a game you want to play (give it challenges like “Get a straight flush”), or a general challenge like “Hit a Must Hit By on any Phoenix Link.”</div>`;
   }else{
     html+=`<div class="hl-list">${active.map(hitlistCard).join('')||'<div class="muted" style="font-size:13px;padding:6px 2px;">Everything’s checked off — nice. 🎯</div>'}</div>`;
     if(done.length){
@@ -2712,6 +2729,7 @@ function renderHitlist(){
   body.innerHTML=html;
   paintArtBgs(body);
   body.querySelector('#hl-add')?.addEventListener('click',openHitlistAddSheet);
+  body.querySelector('#hl-add-goal')?.addEventListener('click',openAddGoalSheet);
   body.querySelector('#hl-clear')?.addEventListener('click',clearHitlistDone);
   const find=id=>(state.hitlist||[]).find(x=>x.id===id);
   body.querySelectorAll('[data-hlplay]').forEach(el=>el.addEventListener('click',()=>{const it=find(el.dataset.hlplay);if(it)startFromHitlist(it);}));
@@ -2723,6 +2741,7 @@ function renderHitlist(){
 }
 
 function hitlistCard(it){
+  if(isGoal(it))return goalCard(it);
   const done=hitlistComplete(it);
   const ch=it.challenges||[];
   const [core,variant]=splitGameName(it.game_name);
@@ -2747,6 +2766,20 @@ function hitlistCard(it){
     </div>
     ${ch.length?`<div class="hl-challenges">${chHtml}</div>`:''}
     <button type="button" class="hl-addch" data-hladdch="${it.id}">+ challenge</button>
+  </div>`;
+}
+
+// A standalone general challenge: one checkable line, not tied to a game (no thumbnail, no
+// play button, no sub-challenges). Toggled via the manual done flag; removable like any item.
+function goalCard(it){
+  const done=!!it.done;
+  return `<div class="hl-card hl-goal${done?' done':''}" data-hl="${it.id}">
+    <button type="button" class="hl-goal-chk${done?' on':''}" data-hldone="${it.id}" aria-label="Mark done"></button>
+    <div class="hl-goal-body">
+      <div class="hl-goal-tag">🎯 General challenge</div>
+      <div class="hl-goal-t">${esc(it.game_name)}</div>
+    </div>
+    <button type="button" class="hl-x" data-hldel="${it.id}" aria-label="Remove">🗑</button>
   </div>`;
 }
 
@@ -2790,6 +2823,27 @@ async function addHitlistGame(g){
     game_name:g.variant?`${g.name} — ${g.variant}`:g.name,category:g.category});
   if(r&&r.ok){applyBootstrap(r.bootstrap);cacheState();if(currentTab==='hitlist')renderHitlist();}
   else toast((r&&r.message)||'Could not add to Hit List.');
+}
+
+// Add a standalone general challenge (sentinel category 'goal'; the text is the game_name).
+function openAddGoalSheet(){
+  openSheet('Add a general challenge',`
+    <div class="muted" style="font-size:13px;margin-bottom:8px;">A goal not tied to one game — e.g. “Hit a Must Hit By 1888 on any Phoenix Link machine.”</div>
+    <label class="field">Challenge</label>
+    <input id="hl-goal-input" placeholder="e.g. Hit a Must Hit By on any Phoenix Link" autocomplete="off" maxlength="200">
+    <div class="sheet-actions"><button class="btn" data-close-sheet>Cancel</button>
+      <button class="btn primary" id="hl-goal-add">Add</button></div>
+  `,()=>{
+    const inp=document.getElementById('hl-goal-input');setTimeout(()=>inp.focus(),50);
+    const add=async()=>{const text=inp.value.trim();if(!text)return;closeSheet();await addHitlistGoal(text);};
+    document.getElementById('hl-goal-add').addEventListener('click',add);
+    inp.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();add();}});
+  });
+}
+async function addHitlistGoal(text){
+  const r=await api('ct-write',{action:'hitlist-add',game_name:text,category:'goal',challenges:[]});
+  if(r&&r.ok){applyBootstrap(r.bootstrap);cacheState();if(currentTab==='hitlist')renderHitlist();}
+  else toast((r&&r.message)||'Could not add challenge.');
 }
 
 // Fire-and-forget persistence of an item's challenges+done after an optimistic local change
@@ -3018,6 +3072,7 @@ function mockSeed(){
       {id:'h2',account_id:'me',game_id:'g2',game_name:'Buffalo Gold',category:'slot',done:false,sort_order:1,created_at:t+'T00:00:00',
         challenges:[{id:'hc3',text:'Trigger a triple-pop bonus',done:false}]},
       {id:'h3',account_id:'me',game_id:'g6',game_name:'Craps — 3 Point Molly',category:'bubble_craps',done:false,sort_order:2,created_at:t+'T00:00:00',challenges:[]},
+      {id:'h4',account_id:'me',game_id:null,game_name:'Hit a Must Hit By 1888 on any Phoenix Link machine',category:'goal',done:false,sort_order:3,created_at:t+'T00:00:00',challenges:[]},
     ],
   };
 }
