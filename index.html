@@ -552,7 +552,10 @@
   /* Standalone general-challenge (goal) card */
   .hl-addrow{display:flex;gap:8px;margin-top:2px;}
   .hl-addrow .btn{flex:1;}
-  .hl-goal{display:flex;align-items:center;gap:11px;padding:11px 11px;}
+  .hl-goal{padding:11px;}
+  .hl-goal-top{display:flex;align-items:center;gap:11px;}
+  .hl-goal-ic{flex:0 0 auto;width:26px;height:26px;border-radius:50%;background:var(--panel2);display:flex;
+    align-items:center;justify-content:center;font-size:14px;}
   .hl-goal-chk{flex:0 0 auto;width:26px;height:26px;border-radius:50%;border:2px solid var(--gold-dim);
     background:none;color:var(--on-gold);font-size:14px;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:center;}
   .hl-goal-chk.on{background:var(--gold);border-color:var(--gold);}
@@ -712,7 +715,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.48';
+const APP_VERSION='0.9.49';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -2769,17 +2772,29 @@ function hitlistCard(it){
   </div>`;
 }
 
-// A standalone general challenge: one checkable line, not tied to a game (no thumbnail, no
-// play button, no sub-challenges). Toggled via the manual done flag; removable like any item.
+// A standalone general challenge, not tied to a game (no thumbnail, no play button). Like a
+// game item: with NO sub-challenges it's a single checkbox (manual done flag); add sub-challenges
+// and it becomes a sub-checklist that completes when they're all ticked.
 function goalCard(it){
-  const done=!!it.done;
+  const done=hitlistComplete(it);
+  const ch=it.challenges||[];
+  const noCh=ch.length===0;
+  const chHtml=ch.map(c=>`<div class="hl-ch${c.done?' on':''}">
+    <button type="button" class="hl-ch-main" data-chtoggle="${it.id}" data-chid="${c.id}"><span class="hl-chk"></span><span class="hl-ch-t">${esc(c.text)}</span></button>
+    <button type="button" class="hl-ch-x" data-chdel="${it.id}" data-chid="${c.id}" aria-label="Delete sub-challenge">×</button></div>`).join('');
+  const tag=`🎯 General challenge${ch.length?` · ${ch.filter(c=>c.done).length}/${ch.length} done`:''}`;
   return `<div class="hl-card hl-goal${done?' done':''}" data-hl="${it.id}">
-    <button type="button" class="hl-goal-chk${done?' on':''}" data-hldone="${it.id}" aria-label="Mark done"></button>
-    <div class="hl-goal-body">
-      <div class="hl-goal-tag">🎯 General challenge</div>
-      <div class="hl-goal-t">${esc(it.game_name)}</div>
+    <div class="hl-goal-top">
+      ${noCh?`<button type="button" class="hl-goal-chk${it.done?' on':''}" data-hldone="${it.id}" aria-label="Mark done"></button>`
+            :`<div class="hl-goal-ic">🎯</div>`}
+      <div class="hl-goal-body">
+        <div class="hl-goal-tag">${tag}</div>
+        <div class="hl-goal-t">${esc(it.game_name)}</div>
+      </div>
+      <button type="button" class="hl-x" data-hldel="${it.id}" aria-label="Remove">🗑</button>
     </div>
-    <button type="button" class="hl-x" data-hldel="${it.id}" aria-label="Remove">🗑</button>
+    ${ch.length?`<div class="hl-challenges">${chHtml}</div>`:''}
+    <button type="button" class="hl-addch" data-hladdch="${it.id}">+ sub-challenge</button>
   </div>`;
 }
 
@@ -3073,6 +3088,8 @@ function mockSeed(){
         challenges:[{id:'hc3',text:'Trigger a triple-pop bonus',done:false}]},
       {id:'h3',account_id:'me',game_id:'g6',game_name:'Craps — 3 Point Molly',category:'bubble_craps',done:false,sort_order:2,created_at:t+'T00:00:00',challenges:[]},
       {id:'h4',account_id:'me',game_id:null,game_name:'Hit a Must Hit By 1888 on any Phoenix Link machine',category:'goal',done:false,sort_order:3,created_at:t+'T00:00:00',challenges:[]},
+      {id:'h5',account_id:'me',game_id:null,game_name:'Clear every Dragon Link jackpot level',category:'goal',done:false,sort_order:4,created_at:t+'T00:00:00',
+        challenges:[{id:'hc5',text:'Minor',done:true},{id:'hc6',text:'Major',done:false},{id:'hc7',text:'Grand',done:false}]},
     ],
   };
 }
