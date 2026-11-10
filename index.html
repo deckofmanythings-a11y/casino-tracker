@@ -715,7 +715,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.49';
+const APP_VERSION='0.9.50';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -821,7 +821,9 @@ function netClass(n){return num(n)>0?'win':num(n)<0?'loss':'';}
 function fmtMult(m){return m==null?'—':(num(m).toFixed(num(m)>=100?0:1)+'×');}
 function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 
-// Casinos for the picker. Add more here (via Claude Code) — no in-app "add casino" by design.
+// Preset casinos for the picker (curated order). Users can also add their own in-app via the
+// "➕ Add a casino…" option in any casino picker, or the Casinos manager — those persist as
+// ct_comp_casinos rows and merge in through allCasinos(). Themed presets live in CASINO_THEMES.
 const CASINOS=["Harrah's Northern California","Sky River","Jackson Rancheria","Cache Creek",
   "Thunder Valley","Red Hawk","Hard Rock Sacramento","Atlantis","GSR"];
 // Per-casino brand palettes: the app recolours its accent (buttons, selected states, the gold
@@ -861,13 +863,65 @@ function applyCasinoTheme(casino){
   r.setProperty('--page-mid',`color-mix(in srgb, ${a} 11%, #eae3d2)`);
   r.setProperty('--page-lo',`color-mix(in srgb, ${a} 16%, #e0d8c3)`);
 }
-// Build a <select> of casinos. Any existing off-list value (e.g. a legacy free-text casino)
-// is kept as a selectable option so editing an old record never silently drops it.
+// The full casino list for pickers: the preset CASINOS (in their curated order) first, then any
+// user-added or previously-used casinos (alphabetical). User casinos persist as ct_comp_casinos
+// rows; we also fold in whatever casinos appear in live state so nothing a record references is
+// ever missing from the picker.
+function allCasinos(selected){
+  const seen=new Set(),presets=[],extras=[];
+  const push=(arr,n)=>{n=(n||'').trim();const k=n.toLowerCase();if(n&&!seen.has(k)){seen.add(k);arr.push(n);}};
+  CASINOS.forEach(n=>push(presets,n));
+  const more=[];
+  (state.comp_casinos||[]).forEach(c=>more.push(c.casino));
+  (state.comps||[]).forEach(c=>more.push(c.casino));
+  (state.stakes||[]).forEach(c=>more.push(c.casino));
+  (state.sessions||[]).forEach(c=>more.push(c.casino));
+  (state.carryover_open||[]).forEach(c=>more.push(c.casino));
+  if(state.active_trip)more.push(state.active_trip.casino);
+  more.push(state.theme_casino);if(selected)more.push(selected);
+  more.forEach(n=>push(extras,n));
+  extras.sort((a,b)=>a.localeCompare(b));
+  return [...presets,...extras];
+}
+// Build a <select> of casinos, ending with an "➕ Add a casino…" sentinel. Any existing off-list
+// value (e.g. a legacy free-text casino) is kept selectable so editing an old record never drops it.
 function casinoSelect(id,selected){
   const sel=selected||'';
-  const list=(sel&&!CASINOS.includes(sel))?[sel,...CASINOS]:CASINOS;
   return `<select id="${id}"><option value=""${sel?'':' selected'}>— Select casino —</option>`+
-    list.map(c=>`<option value="${esc(c)}"${c===sel?' selected':''}>${esc(c)}</option>`).join('')+`</select>`;
+    allCasinos(sel).map(c=>`<option value="${esc(c)}"${c===sel?' selected':''}>${esc(c)}</option>`).join('')+
+    `<option value="__addcasino">➕ Add a casino…</option></select>`;
+}
+// Insert a casino option (before the "Add…" sentinel) if the select doesn't already have it.
+function addCasinoOption(sel,name){
+  if(!sel||[...sel.options].some(o=>o.value===name))return;
+  const opt=document.createElement('option');opt.value=name;opt.textContent=name;
+  sel.insertBefore(opt,[...sel.options].find(o=>o.value==='__addcasino')||null);
+}
+// Persist a new casino (as a ct_comp_casinos row via set-casino-color). Returns the canonical
+// name to select (the existing spelling if already known), or null on failure/empty.
+async function addCasino(name){
+  name=(name||'').trim();if(!name)return null;
+  const existing=allCasinos().find(c=>c.toLowerCase()===name.toLowerCase());
+  if(existing)return existing;
+  const r=await api('ct-write',{action:'set-casino-color',casino:name});
+  if(r&&r.ok){applyBootstrap(r.bootstrap);cacheState();return name;}
+  toast((r&&r.message)||'Could not add casino.');return null;
+}
+// Wire a casino <select> so choosing the "➕ Add a casino…" sentinel prompts for a name, saves it,
+// and selects it — without disturbing the rest of the open form (the prompt is its own overlay).
+function wireCasinoAdd(selId){
+  const sel=document.getElementById(selId);if(!sel)return;
+  let prev=sel.value;
+  sel.addEventListener('change',async()=>{
+    if(sel.value!=='__addcasino'){prev=sel.value;return;}
+    sel.value=prev; // drop the sentinel selection immediately
+    const typed=await promptDialog({title:'Add a casino',placeholder:'Casino name',confirmLabel:'Add'});
+    if(!typed)return;
+    const name=await addCasino(typed);
+    if(!name)return;
+    addCasinoOption(sel,name);sel.value=name;prev=name;
+    sel.dispatchEvent(new Event('change')); // refresh the note area / dependent UI
+  });
 }
 // Standard casino slot/VP denominations for the Denomination picker.
 const DENOMS=[0.01,0.02,0.05,0.10,0.25,0.50,1,2,5,10,25];
@@ -891,7 +945,7 @@ function wireCasinoNote(selId,wrapId){
   if(!sel||!wrap)return;
   const render=(edit)=>{
     const name=sel.value,note=casinoNote(name);
-    if(!name){wrap.innerHTML='';return;}
+    if(!name||name==='__addcasino'){wrap.innerHTML='';return;}
     if(edit){
       wrap.innerHTML=`<textarea class="cn-ta" placeholder="Note on ${esc(name)} — progressives, good/bad games, bubble/stadium craps…">${esc(note)}</textarea>`;
       const ta=wrap.querySelector('.cn-ta');ta.focus();try{ta.setSelectionRange(ta.value.length,ta.value.length);}catch(_){}
@@ -1527,6 +1581,31 @@ function confirmDialog(msg,{confirmLabel='Confirm',danger=false}={}){
     document.body.appendChild(ov);
   });
 }
+// Single-line text prompt as its own overlay (stacks above an open sheet). Resolves the trimmed
+// string, or null on cancel / empty.
+function promptDialog({title='',placeholder='',confirmLabel='OK',value=''}={}){
+  return new Promise(resolve=>{
+    const ov=document.createElement('div');
+    ov.style.cssText='position:fixed;inset:0;z-index:260;display:flex;align-items:center;justify-content:center;'+
+      'background:rgba(0,0,0,.6);backdrop-filter:blur(3px);padding:24px;';
+    ov.innerHTML='<div style="width:100%;max-width:360px;background:var(--panel);border:1px solid var(--border);'+
+      'border-radius:18px;padding:20px;box-shadow:var(--shadow);">'+
+      (title?'<div style="font-size:15px;font-weight:700;margin-bottom:12px;">'+esc(title)+'</div>':'')+
+      '<input id="pd-input" style="width:100%;" placeholder="'+esc(placeholder)+'" value="'+esc(value)+'" autocomplete="off" maxlength="80">'+
+      '<div style="display:flex;gap:10px;margin-top:18px;"><button class="btn" data-c="0">Cancel</button>'+
+      '<button class="btn primary" data-c="1">'+esc(confirmLabel)+'</button></div></div>';
+    const inp=()=>ov.querySelector('#pd-input');
+    const done=v=>{ov.remove();resolve(v);};
+    ov.addEventListener('click',e=>{
+      if(e.target===ov)return done(null);
+      const b=e.target.closest('[data-c]');if(b)done(b.dataset.c==='1'?(inp().value.trim()||null):null);
+    });
+    ov.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();done(inp().value.trim()||null);}
+      else if(e.key==='Escape'){e.preventDefault();done(null);}});
+    document.body.appendChild(ov);
+    setTimeout(()=>{const i=inp();if(i)i.focus();},50);
+  });
+}
 
 // After any mutation: apply returned bootstrap, re-render current tab.
 function afterWrite(resp){
@@ -1614,7 +1693,7 @@ function openSessionSheet(game){
     </div>
   `,()=>{
     let selCat=cat;
-    wireCasinoNote('f-casino','f-casino-note');
+    wireCasinoNote('f-casino','f-casino-note');wireCasinoAdd('f-casino');
     const clientKey=genKey(); // one idempotency key per opened sheet — a double-tap/retry can't duplicate
     enableCents(document.getElementById('f-bet'));
     wireBet30('f');
@@ -1678,7 +1757,7 @@ function openEditSession(id){
     </div>
   `,()=>{
     let selCat=s.category;
-    wireCasinoNote('e-casino','e-casino-note');
+    wireCasinoNote('e-casino','e-casino-note');wireCasinoAdd('e-casino');
     enableCents(document.getElementById('e-bet'));
     wireBet30('e');
     applyCents(document.getElementById('e-cashout'),usesCents(selCat));
@@ -2182,6 +2261,7 @@ function renderBankroll(){
       <label class="field">Starting bankroll</label>
       <div class="money-input"><span class="dollar">$</span><input id="bk-roll" inputmode="decimal" placeholder="1000"></div>
       <button class="btn primary btn-lg" style="margin-top:16px;" id="bk-start">Start trip</button></div>`;
+    wireCasinoAdd('bk-casino');
     document.getElementById('bk-start').addEventListener('click',async()=>{
       afterWrite(await api('ct-write',{action:'save-trip',name:document.getElementById('bk-name').value.trim()||'Trip',
         casino:document.getElementById('bk-casino').value.trim()||null,starting_bankroll:document.getElementById('bk-roll').value||0,
@@ -2303,7 +2383,7 @@ function renderComps(){
     <div class="comp-btn-row">
       <button class="btn primary" id="comp-new">+ New comp</button>
       <button class="btn" id="comp-today">Today’s comps</button>
-      <button class="btn" id="comp-colors">Casino colours</button>
+      <button class="btn" id="comp-colors">Casinos</button>
     </div>
   </div>`;
   // List | Calendar segmented toggle (both views keep the avail-card + toggle above).
@@ -2576,25 +2656,34 @@ function openCompSheet(comp){
 }
 function openCasinoColorsSheet(){
   const PRESET='#a9801f';
-  openSheet('Casino colours','<div id="cc-list"></div><div class="sheet-actions"><button class="btn primary" data-close-sheet>Done</button></div>',()=>{
+  openSheet('Casinos',`<button class="btn primary" id="cc-add" style="width:100%;margin-bottom:4px;">+ Add a casino</button>
+    <div id="cc-list"></div><div class="sheet-actions"><button class="btn primary" data-close-sheet>Done</button></div>`,()=>{
     const listEl=document.getElementById('cc-list');
-    const casinoNames=()=>{const set=[];const add=n=>{if(n&&!set.includes(n))set.push(n);};
-      CASINOS.forEach(add);(state.comps||[]).forEach(c=>add(c.casino));(state.comp_casinos||[]).forEach(c=>add(c.casino));return set;};
+    const casinoNames=()=>allCasinos();
     const meta=name=>(state.comp_casinos||[]).find(c=>c.casino===name)||{};
-    listEl.innerHTML=casinoNames().map(name=>{const m=meta(name);
-      return `<div class="casino-color-row" data-casino="${esc(name)}">
-        <input type="color" class="ccr-color" value="${esc(m.color||PRESET)}">
-        <div class="ccr-name">${esc(name)}</div>
-        <input type="text" class="ccr-cat" placeholder="Category" value="${esc(m.category||'')}">
-      </div>`;}).join('')||'<div class="empty">No casinos yet.</div>';
-    // Save on colour change / category blur WITHOUT closing the sheet — apply the returned
-    // bootstrap in place so the picker (and every other row) stays exactly where it is.
-    listEl.querySelectorAll('.casino-color-row').forEach(row=>{
-      const name=row.dataset.casino,colorInp=row.querySelector('.ccr-color'),catInp=row.querySelector('.ccr-cat');
-      const save=async()=>{const r=await api('ct-write',{action:'set-casino-color',casino:name,color:colorInp.value,category:catInp.value.trim()||null});
-        if(r&&r.ok){applyBootstrap(r.bootstrap);cacheState();if(currentTab==='comps')renderComps();}};
-      colorInp.addEventListener('change',save);
-      catInp.addEventListener('blur',save);
+    const paint=()=>{
+      listEl.innerHTML=casinoNames().map(name=>{const m=meta(name);
+        return `<div class="casino-color-row" data-casino="${esc(name)}">
+          <input type="color" class="ccr-color" value="${esc(m.color||PRESET)}">
+          <div class="ccr-name">${esc(name)}</div>
+          <input type="text" class="ccr-cat" placeholder="Category" value="${esc(m.category||'')}">
+        </div>`;}).join('')||'<div class="empty">No casinos yet.</div>';
+      // Save on colour change / category blur WITHOUT closing the sheet — apply the returned
+      // bootstrap in place so the picker (and every other row) stays exactly where it is.
+      listEl.querySelectorAll('.casino-color-row').forEach(row=>{
+        const name=row.dataset.casino,colorInp=row.querySelector('.ccr-color'),catInp=row.querySelector('.ccr-cat');
+        const save=async()=>{const r=await api('ct-write',{action:'set-casino-color',casino:name,color:colorInp.value,category:catInp.value.trim()||null});
+          if(r&&r.ok){applyBootstrap(r.bootstrap);cacheState();if(currentTab==='comps')renderComps();}};
+        colorInp.addEventListener('change',save);
+        catInp.addEventListener('blur',save);
+      });
+    };
+    paint();
+    document.getElementById('cc-add').addEventListener('click',async()=>{
+      const typed=await promptDialog({title:'Add a casino',placeholder:'Casino name',confirmLabel:'Add'});
+      if(!typed)return;
+      const name=await addCasino(typed);
+      if(name){paint();if(currentTab==='comps')renderComps();}
     });
   });
 }
