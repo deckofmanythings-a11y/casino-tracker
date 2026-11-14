@@ -725,7 +725,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.52';
+const APP_VERSION='0.9.53';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -1059,27 +1059,44 @@ const LADDER=[
   {name:'Attack Max',  band:'$1,025+',      denom:1,    bet:25.00, floor:1025, lock:650, live:375, zone:'max', note:'Every +$100 = +$100 locked'},
 ];
 function ladderDenom(d){return d<1?(Math.round(d*100)+'¢'):('$'+d);}
-// 88-credit variant (Dancing Drums / Hot Pot / 88 Fortunes family): these machines require a
-// minimum 88-credit bet to be eligible for all jackpots, and betting more than 88 just raises
-// cost without unlocking anything extra — so the smart play is ALWAYS bet 88 credits and use the
-// DENOMINATION to scale your dollar risk. We recompute each rung to the denom whose 88-credit bet
-// is closest to the standard ladder's target bet; the bankroll bands + lock-up strategy are
-// unchanged (same length/floors/locks), only the denom/bet you feed the machine change. Because
-// bet = denom × 88 for every rung, the credits readout naturally shows "88 credits" throughout.
-const DENOMS_88=[0.01,0.02,0.05,0.10,0.25,0.50,1];
-function nearest88Denom(targetBet){let best=DENOMS_88[0],bd=Infinity;
-  DENOMS_88.forEach(d=>{const diff=Math.abs(d*88-targetBet);if(diff<bd-1e-9){bd=diff;best=d;}});return best;}
-const LADDER_88=LADDER.map(r=>{const d=nearest88Denom(r.bet);return {...r,denom:d,bet:+(d*88).toFixed(2)};});
-// Which ladder a session uses: an 88-credit game's sessions use LADDER_88. Source of truth is the
-// catalog game's credit_min (set in the Games tab or toggled on the ladder). For an ad-hoc session
-// with no catalog game, a per-session localStorage override stands in.
+// Credit-based machines (Super Hot Flaming Pots, Mystery of the Lamp, the 88 Fortunes / Dancing
+// Drums family…) don't take an arbitrary dollar bet: you pick a DENOMINATION, then a credit "bet
+// level" from that machine's menu, and the dollar bet = denom × credits. Each BET_PROFILE captures
+// one real machine's menu, by denomination tier (read off the machine's bet-select screen). We
+// rebuild the Attack Ladder for a profile by mapping each rung's target bet to the CLOSEST
+// achievable denom×credits — ties broken toward MORE credits (= better jackpot odds, same cost,
+// which is what the machines' own "better jackpot odds" arrow rewards). Bands + lock-ups unchanged.
+const BET_PROFILES={
+  flaming_pots:{short:'Flaming Pots',label:'Super Hot Flaming Pots',note:'≥88 credits = all jackpots eligible',
+    tiers:[{denoms:[0.01,0.02],levels:[88,176,264,528,880]},{denoms:[0.05,0.10],levels:[38,76,114,152,190]},{denoms:[1,2],levels:[10,20,30,40,50]}]},
+  mystery_lamp:{short:'Mystery of the Lamp',label:'Mystery of the Lamp',note:'More credits = better jackpot odds',
+    tiers:[{denoms:[0.01,0.02],levels:[80,120,160,240,400]},{denoms:[0.05,0.10],levels:[40,60,80,120,200]},{denoms:[1,2],levels:[8,12,16,24,40]}]},
+};
+const PROFILE_KEYS=Object.keys(BET_PROFILES);
+function profileOptions(p){const out=[];p.tiers.forEach(t=>t.denoms.forEach(d=>t.levels.forEach(c=>out.push({denom:d,credits:c,bet:+(d*c).toFixed(2)}))));return out;}
+function closestBet(opts,target){let best=null;for(const o of opts){if(!best){best=o;continue;}
+  const d0=Math.abs(best.bet-target),d1=Math.abs(o.bet-target);
+  if(d1<d0-1e-9){best=o;continue;}
+  if(Math.abs(d1-d0)<1e-9){ // equidistant: prefer the LOWER dollar; for the SAME dollar, more credits = better jackpot odds
+    if(o.bet<best.bet-1e-9)best=o;
+    else if(Math.abs(o.bet-best.bet)<1e-9&&o.credits>best.credits)best=o;
+  }}return best;}
+const PROFILE_LADDERS={};PROFILE_KEYS.forEach(k=>{const opts=profileOptions(BET_PROFILES[k]);
+  PROFILE_LADDERS[k]=LADDER.map(r=>{const o=closestBet(opts,r.bet);return {...r,denom:o.denom,bet:o.bet};});});
+// Resolve a session's bet-profile key (or null = standard). The catalog game's bet_profile is the
+// source of truth ('standard' = explicit standard); a legacy credit_min===88 maps to flaming_pots.
+// Ad-hoc sessions (no catalog game) use a per-session localStorage override.
 function gameForSession(s){return (state.games||[]).find(g=>g.id===s.game_id)||null;}
-function ladderMode(s){
+function ladderProfileKey(s){
   const g=gameForSession(s);
-  if(g)return num(g.credit_min)===88?88:0;
-  try{return localStorage.getItem('ct_l88_'+s.id)==='88'?88:0;}catch(_){return 0;}
+  if(g){
+    if(g.bet_profile)return g.bet_profile==='standard'?null:(BET_PROFILES[g.bet_profile]?g.bet_profile:null);
+    if(num(g.credit_min)===88)return 'flaming_pots';
+    return null;
+  }
+  try{const o=localStorage.getItem('ct_lprof_'+s.id);return (o&&BET_PROFILES[o])?o:null;}catch(_){return null;}
 }
-function ladderTable(s){return ladderMode(s)===88?LADDER_88:LADDER;}
+function ladderTable(s){const k=ladderProfileKey(s);return k?PROFILE_LADDERS[k]:LADDER;}
 // Starts minimized behind a pill; only an explicit '1' (user opened it) expands it.
 function ladderOpen(){try{return localStorage.getItem('ct_ladder_open')==='1';}catch(_){return false;}}
 // A fresh session (no stored rung yet) starts on Cruise — the ~$100 buy-in level.
@@ -1114,17 +1131,17 @@ function ladderWidget(s){
 // Paint the dynamic parts (current rung card, slider position, lock-up readout, button states)
 // from the session's rung/lock. Called on bind and after every interaction.
 function renderLadderDynamic(root,s){
-  const mode=ladderMode(s),tbl=ladderTable(s);
+  const pk=ladderProfileKey(s),prof=pk?BET_PROFILES[pk]:null,tbl=ladderTable(s);
   const {rung,lock}=ladderState(s),r=tbl[rung],L=tbl[lock];
   const cur=root.querySelector('.lad-current');cur.dataset.zone=r.zone;
   const cr=Number((r.bet/r.denom).toFixed(2)); // credits = bet ÷ denom = the machine's BET / bet button
-  const note=mode===88?[r.note,'≥88 credits = all jackpots eligible'].filter(Boolean).join(' · '):r.note;
+  const note=prof?[r.note,prof.note].filter(Boolean).join(' · '):r.note;
   cur.innerHTML=`<div class="lc-top"><span class="lc-name">${esc(r.name)}</span><span class="lc-band">${esc(r.band)}</span></div>
     <div class="lc-bet"><span class="lc-denom">${ladderDenom(r.denom)}</span><span class="lc-attempt">${money(r.bet)} <small>/ attempt</small></span><span class="lc-cr" title="Bet ÷ denom — press bet-up until the machine reads this">${cr} <small>credits</small></span></div>
     ${note?`<div class="lc-note">${esc(note)}</div>`:''}`;
   const mb=root.querySelector('[data-lad-mode]');
-  if(mb){mb.classList.toggle('on',mode===88);
-    mb.innerHTML=`Bet mode: <b>${mode===88?'88-credit game':'Standard'}</b>`;}
+  if(mb){mb.classList.toggle('on',!!prof);
+    mb.innerHTML=`Bet mode: <b>${prof?prof.short:'Standard'}</b>`;}
   const sl=root.querySelector('.lad-slider');if(sl.value!==String(rung))sl.value=String(rung);
   const amt=root.querySelector('.ll-amt'),sub=root.querySelector('.ll-sub');
   if(L.lock>0){amt.innerHTML=`${money(L.lock)}<span class="ll-unit"> locked up</span>`;
@@ -1134,19 +1151,20 @@ function renderLadderDynamic(root,s){
   root.querySelector('[data-step="-1"]').disabled=rung<=0;
   root.querySelector('[data-step="1"]').disabled=rung>=LADDER.length-1;
 }
-// Flip the ladder between Standard and 88-credit. For a catalog game this marks the GAME
-// (credit_min), so it's remembered everywhere and mirrored in the Games tab; for an ad-hoc
-// session it's kept as a local per-session override.
-async function toggleLadderMode(root,s){
-  const next=ladderMode(s)===88?0:88;
+// Cycle the ladder's bet profile: Standard → each machine profile → back. For a catalog game this
+// marks the GAME (bet_profile), so it's remembered everywhere and mirrored in the Games tab; for an
+// ad-hoc session it's kept as a local per-session override.
+async function cycleLadderProfile(root,s){
+  const order=[null,...PROFILE_KEYS];
+  const next=order[(order.indexOf(ladderProfileKey(s))+1)%order.length];
   const g=gameForSession(s);
   if(g){
-    const prev=g.credit_min;g.credit_min=next;renderLadderDynamic(root,s); // optimistic
-    const r=await api('ct-write',{action:'set-game-credit-min',id:g.id,credit_min:next});
+    const prev=g.bet_profile;g.bet_profile=next||'standard';renderLadderDynamic(root,s); // optimistic
+    const r=await api('ct-write',{action:'set-game-bet-profile',id:g.id,bet_profile:next||'standard'});
     if(r&&r.ok){applyBootstrap(r.bootstrap);cacheState();}
-    else{g.credit_min=prev;renderLadderDynamic(root,s);toast('Couldn’t save bet mode.');}
+    else{g.bet_profile=prev;renderLadderDynamic(root,s);toast('Couldn’t save bet mode.');}
   }else{
-    try{localStorage.setItem('ct_l88_'+s.id,String(next));}catch(_){}
+    try{if(next)localStorage.setItem('ct_lprof_'+s.id,next);else localStorage.removeItem('ct_lprof_'+s.id);}catch(_){}
     renderLadderDynamic(root,s);
   }
 }
@@ -1174,7 +1192,7 @@ function bindLadder(root,s){
   root.querySelector('[data-revert]').addEventListener('click',()=>{
     const {lock}=ladderState(s);if(lock<=0)return;
     s.ladder_lock=lock-1;renderLadderDynamic(root,s);saveLadder(s);});
-  root.querySelector('[data-lad-mode]').addEventListener('click',()=>toggleLadderMode(root,s));
+  root.querySelector('[data-lad-mode]').addEventListener('click',()=>cycleLadderProfile(root,s));
   root.querySelector('[data-lad-toggle]').addEventListener('click',()=>{
     root.classList.toggle('collapsed');
     try{localStorage.setItem('ct_ladder_open',root.classList.contains('collapsed')?'0':'1');}catch(_){}});
@@ -3070,13 +3088,10 @@ function openGameSheet(game,seed){
     <div id="g-slot" style="${isSlotty(cat)?'':'display:none'}"><div class="row2">
       <div><label class="field">Default denom</label>${denomSelect('g-denom',g.default_denom)}</div>
       <div><label class="field">Default bet</label><input id="g-bet" inputmode="decimal" value="${g.default_bet??''}"></div></div></div>
-    <div id="g-credmin-wrap" style="${isSlotty(cat)?'':'display:none'}">
+    <div id="g-betprofile-wrap" style="${isSlotty(cat)?'':'display:none'}">
       <label class="field">Attack Ladder bet structure</label>
-      <div class="seg" id="g-credmin">
-        <button type="button" data-cm="0">Standard</button>
-        <button type="button" data-cm="88">88-credit</button>
-      </div>
-      <div class="muted" style="font-size:11px;margin-top:4px;">88-credit = Dancing Drums, Hot Pot, 88 Fortunes… — the ladder bets 88 credits (all jackpots) and steps the denom.</div>
+      <select id="g-betprofile">${['standard',...PROFILE_KEYS].map(k=>`<option value="${k}">${k==='standard'?'Standard':esc(BET_PROFILES[k].label)}</option>`).join('')}</select>
+      <div class="muted" style="font-size:11px;margin-top:4px;">For credit-based machines — the ladder picks the denom + credit bet level closest to each rung.</div>
     </div>
     <label class="field">Default buy-in (optional)</label>
     <div class="money-input"><span class="dollar">$</span><input id="g-buyin" inputmode="decimal" placeholder="300" value="${g.default_buyin??''}"></div>
@@ -3107,16 +3122,14 @@ function openGameSheet(game,seed){
     let imageUrl=g.image_url||null,artBg=g.art_bg||'';
     enableCents(document.getElementById('g-bet'));
     applyStrategyUI('g',selCat);
-    // 88-credit bet-structure toggle (slot games only).
-    let credMin=num(g.credit_min)===88?88:0;
-    const paintCredMin=()=>document.querySelectorAll('#g-credmin button').forEach(b=>b.classList.toggle('sel',num(b.dataset.cm)===credMin));
-    paintCredMin();
-    document.querySelectorAll('#g-credmin button').forEach(b=>b.addEventListener('click',()=>{credMin=num(b.dataset.cm);paintCredMin();}));
+    // Bet-structure profile for credit-based machines (slot games only).
+    let selProfile=(g.bet_profile&&(g.bet_profile==='standard'||BET_PROFILES[g.bet_profile]))?g.bet_profile:(num(g.credit_min)===88?'flaming_pots':'standard');
+    const bpSel=document.getElementById('g-betprofile');if(bpSel){bpSel.value=selProfile;bpSel.addEventListener('change',()=>selProfile=bpSel.value);}
     document.querySelectorAll('#g-cat button').forEach(b=>b.addEventListener('click',()=>{
       selCat=b.dataset.cat;document.querySelectorAll('#g-cat button').forEach(x=>x.classList.toggle('sel',x===b));
       applyStrategyUI('g',selCat);
       document.getElementById('g-slot').style.display=isSlotty(selCat)?'':'none';
-      document.getElementById('g-credmin-wrap').style.display=isSlotty(selCat)?'':'none';}));
+      document.getElementById('g-betprofile-wrap').style.display=isSlotty(selCat)?'':'none';}));
 
     const thumb=document.getElementById('g-art-thumb'),clearBtn=document.getElementById('g-art-clear'),
       pickBtn=document.getElementById('g-art-pick'),fileInput=document.getElementById('g-art-file'),
@@ -3155,7 +3168,7 @@ function openGameSheet(game,seed){
         variant:'',category:selCat,
         default_denom:slotty?document.getElementById('g-denom').value:null,
         default_bet:slotty?(document.getElementById('g-bet').value||null):null,
-        credit_min:slotty?credMin:0,
+        bet_profile:slotty?selProfile:'standard',
         default_buyin:document.getElementById('g-buyin').value||null,
         image_url:imageUrl||null,art_bg:(imageUrl&&artBg)?artBg:null,
         dupe_from:g.id});  // insert the new game right below the one it was duped from
@@ -3168,7 +3181,7 @@ function openGameSheet(game,seed){
         strategy:(selCat==='bubble_craps'?(document.getElementById('g-strategy').value.trim()||null):null),
         category:selCat,default_denom:isSlotty(selCat)?document.getElementById('g-denom').value:null,
         default_bet:isSlotty(selCat)?document.getElementById('g-bet').value:null,
-        credit_min:isSlotty(selCat)?credMin:0,
+        bet_profile:isSlotty(selCat)?selProfile:'standard',
         default_buyin:document.getElementById('g-buyin').value||null,
         image_url:imageUrl||'',art_bg:(imageUrl&&artBg)?artBg:null,
         dupe_from:(g.id?null:(g.dupe_from||null))}));
@@ -3201,14 +3214,16 @@ function mockSeed(){
       {id:'g4',name:'Blackjack',category:'table',default_denom:null,default_bet:null,default_buyin:300,sort_order:3,archived:false},
       {id:'g5',name:'Dbl Double Bonus',category:'video_poker',default_denom:0.25,default_bet:1.25,sort_order:4,archived:false},
       {id:'g6',name:'Craps',category:'bubble_craps',variant:'3 Point Molly',strategy:'Pass line with odds and two Come bets with odds at all times',default_denom:null,default_bet:null,default_buyin:100,sort_order:5,archived:false,favorite:true},
-      {id:'g9',name:'Dancing Drums',category:'slot',default_denom:0.01,default_bet:0.88,credit_min:88,sort_order:8,archived:false,favorite:true},
+      {id:'g9',name:'Super Hot Flaming Pots',category:'slot',default_denom:0.01,default_bet:0.88,bet_profile:'flaming_pots',sort_order:8,archived:false,favorite:true},
+      {id:'g10',name:'Mystery of the Lamp',category:'slot',default_denom:0.01,default_bet:1.20,bet_profile:'mystery_lamp',sort_order:9,archived:false,favorite:true},
     ],
     trips:[{id:'t1',name:'Thunder Valley — August',casino:'Thunder Valley',starting_bankroll:1000,start_date:dayAgo(2),started_at:dayAgo(2)+'T18:00:00',ended_at:null},
       {id:'t2',name:'Aria — July',casino:'Aria',starting_bankroll:500,start_date:dayAgo(30),started_at:dayAgo(30)+'T18:00:00',ended_at:dayAgo(29)+'T12:00:00'},
       {id:'t3',name:'Bellagio — June',casino:'Bellagio',starting_bankroll:800,start_date:dayAgo(60),started_at:dayAgo(60)+'T18:00:00',ended_at:dayAgo(59)+'T12:00:00'}],
     sessions:[
       withBonus(withBuyins(S({game_name:'Lightning Link',category:'slot',denom:1,bet_size:2.5,session_date:t,cash_out:null}),[200,100]),[{amount:250,base_bet:2.5},{amount:80,base_bet:2.5}]),
-      withBuyins(S({game_id:'g9',game_name:'Dancing Drums',category:'slot',denom:0.01,bet_size:0.88,session_date:t,cash_out:null}),[100]),
+      withBuyins(S({game_id:'g9',game_name:'Super Hot Flaming Pots',category:'slot',denom:0.01,bet_size:0.88,session_date:t,cash_out:null}),[100]),
+      withBuyins(S({game_id:'g10',game_name:'Mystery of the Lamp',category:'slot',denom:0.01,bet_size:1.20,session_date:t,cash_out:null}),[100]),
       withBonus(withBuyins(S({game_name:'Buffalo Gold',category:'slot',denom:0.01,bet_size:1.5,session_date:t,cash_out:420}),[100]),[{amount:1500,base_bet:1.5}]),
       withBuyins(S({game_name:'Blackjack',category:'table',session_date:t,cash_out:60}),[100]),
       withBuyins(S({game_name:'Craps — 3 Point Molly',category:'bubble_craps',session_date:t,cash_out:null,strategy:'Pass line with odds and two Come bets with odds at all times',craps_small:true,craps_all:true}),[100]),
@@ -3328,15 +3343,16 @@ function mockWrite(b){
   else if(a==='delete-bonus'){mockDB.sessions.forEach(s=>s.bonuses=s.bonuses.filter(x=>x.id!==b.id));}
   else if(a==='set-bonus-jackpot'){mockDB.sessions.forEach(s=>{const bx=s.bonuses.find(x=>x.id===b.id);if(bx)bx.is_jackpot=!!b.is_jackpot;});}
   else if(a==='save-game'){const img=('image_url' in b)?(b.image_url||null):undefined;const abg=('art_bg' in b)?(b.art_bg||null):undefined;const vr=('variant' in b)?(b.variant||null):undefined;const vn=('variant_note' in b)?(b.variant_note||null):undefined;
-    if(b.id){const g=mockDB.games.find(x=>x.id===b.id);if(g){Object.assign(g,{name:b.name,category:b.category,default_denom:b.default_denom?num(b.default_denom):null,default_bet:b.default_bet?num(b.default_bet):null,default_buyin:b.default_buyin?num(b.default_buyin):null});if(img!==undefined)g.image_url=img;if(abg!==undefined)g.art_bg=abg;if(vr!==undefined)g.variant=vr;if(vn!==undefined)g.variant_note=vn;if('strategy' in b)g.strategy=b.strategy;if('credit_min' in b)g.credit_min=num(b.credit_min)===88?88:0;}}
+    if(b.id){const g=mockDB.games.find(x=>x.id===b.id);if(g){Object.assign(g,{name:b.name,category:b.category,default_denom:b.default_denom?num(b.default_denom):null,default_bet:b.default_bet?num(b.default_bet):null,default_buyin:b.default_buyin?num(b.default_buyin):null});if(img!==undefined)g.image_url=img;if(abg!==undefined)g.art_bg=abg;if(vr!==undefined)g.variant=vr;if(vn!==undefined)g.variant_note=vn;if('strategy' in b)g.strategy=b.strategy;if('credit_min' in b)g.credit_min=num(b.credit_min)===88?88:0;if('bet_profile' in b)g.bet_profile=b.bet_profile||null;}}
     else{const src=b.dupe_from?mockDB.games.find(x=>x.id===b.dupe_from):null;
       // A duplicate slots in right below its source: take source+1, shove everyone after it down.
       let so=mockDB.games.length;
       if(src){so=num(src.sort_order)+1;mockDB.games.forEach(x=>{if(num(x.sort_order)>=so)x.sort_order=num(x.sort_order)+1;});}
-      mockDB.games.push({id:mockId('g'),name:b.name,category:b.category,variant:vr||null,variant_note:vn||null,strategy:b.strategy||null,default_denom:b.default_denom?num(b.default_denom):null,default_bet:b.default_bet?num(b.default_bet):null,credit_min:num(b.credit_min)===88?88:0,default_buyin:b.default_buyin?num(b.default_buyin):null,image_url:img||null,art_bg:abg||null,sort_order:so,archived:false});}}
+      mockDB.games.push({id:mockId('g'),name:b.name,category:b.category,variant:vr||null,variant_note:vn||null,strategy:b.strategy||null,default_denom:b.default_denom?num(b.default_denom):null,default_bet:b.default_bet?num(b.default_bet):null,credit_min:num(b.credit_min)===88?88:0,bet_profile:b.bet_profile||null,default_buyin:b.default_buyin?num(b.default_buyin):null,image_url:img||null,art_bg:abg||null,sort_order:so,archived:false});}}
   else if(a==='delete-game'){const g=mockDB.games.find(x=>x.id===b.id);if(g)g.archived=true;}
   else if(a==='set-game-favorite'){const g=mockDB.games.find(x=>x.id===b.id);if(g)g.favorite=b.favorite===true;}
   else if(a==='set-game-credit-min'){const g=mockDB.games.find(x=>x.id===b.id);if(g)g.credit_min=num(b.credit_min)===88?88:0;}
+  else if(a==='set-game-bet-profile'){const g=mockDB.games.find(x=>x.id===b.id);if(g)g.bet_profile=b.bet_profile||null;}
   else if(a==='reorder-games'){(b.ids||[]).forEach((id,i)=>{const g=mockDB.games.find(x=>x.id===id);if(g)g.sort_order=i;});}
   else if(a==='save-trip'){if(b.id){const t=mockDB.trips.find(x=>x.id===b.id);if(t)Object.assign(t,{name:b.name,casino:b.casino,starting_bankroll:num(b.starting_bankroll)});}
     else mockDB.trips.push({id:mockId('t'),name:b.name,casino:b.casino,starting_bankroll:num(b.starting_bankroll),start_date:b.start_date||todayLocal(),started_at:new Date().toISOString(),ended_at:null});}
