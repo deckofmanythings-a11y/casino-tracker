@@ -196,6 +196,32 @@
   .lad-mode b{font-weight:800;color:var(--text);}
   .lad-mode.on{background:color-mix(in srgb,var(--gold) 16%,var(--panel));border-color:var(--gold-dim);}
   .lad-mode.on b{color:var(--gold-dim);}
+  /* ── Bet tables (manager + builder) ── */
+  .bt-sec{font-size:12px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin:16px 2px 8px;}
+  .bt-row{display:flex;align-items:center;gap:8px;padding:8px 0;border-top:1px solid var(--faint);}
+  .bt-row:first-of-type{border-top:none;}
+  .bt-row-main{flex:1 1 auto;min-width:0;text-align:left;background:none;border:none;padding:0;cursor:pointer;color:inherit;}
+  .bt-row-name{font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .bt-row-sub{font-size:11px;color:var(--muted);margin-top:1px;}
+  .bt-tag{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);background:var(--panel2);border:1px solid var(--border);border-radius:999px;padding:1px 6px;vertical-align:middle;}
+  .bt-mini{flex:0 0 auto;font-size:12px;font-weight:700;padding:5px 10px;border-radius:9px;border:1px solid var(--border);background:var(--panel);color:var(--text);cursor:pointer;}
+  .bt-mini.danger{color:var(--loss);border-color:color-mix(in srgb,var(--loss) 40%,var(--border));}
+  .bt-tier{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:12px;margin-top:10px;}
+  .bt-tier-h{display:flex;align-items:center;justify-content:space-between;font-size:12px;font-weight:700;color:var(--muted);margin-bottom:8px;}
+  .bt-tier-x{background:none;border:none;color:var(--muted);font-size:14px;cursor:pointer;padding:2px 6px;line-height:1;}
+  .bt-denoms{display:flex;flex-wrap:wrap;gap:6px;}
+  .bt-denom{font-size:13px;font-weight:800;padding:7px 12px;border-radius:999px;border:1px solid var(--border);background:var(--panel2);color:var(--muted);cursor:pointer;min-width:46px;}
+  .bt-denom.sel{background:color-mix(in srgb,var(--gold) 20%,var(--panel));border-color:var(--gold-dim);color:var(--gold-dim);}
+  .bpl-wrap{margin-top:16px;background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:12px;}
+  .bpl-head{font-size:12px;font-weight:800;letter-spacing:.03em;text-transform:uppercase;color:var(--muted);margin-bottom:8px;}
+  .bpl-table{width:100%;border-collapse:collapse;font-size:13px;}
+  .bpl-table th{text-align:left;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);padding:0 0 6px;border-bottom:1px solid var(--faint);}
+  .bpl-table th:last-child,.bpl-table td:last-child{text-align:right;}
+  .bpl-table td{padding:5px 0;border-top:1px solid var(--faint);}
+  .bpl-rung{font-weight:600;}
+  .bpl-combo{color:var(--muted);font-variant-numeric:tabular-nums;}
+  .bpl-bet{font-weight:800;font-variant-numeric:tabular-nums;}
+  .bpl-bet.dup{color:var(--muted);}
   .lad-wheel{display:flex;align-items:center;gap:10px;}
   .lad-step{flex:0 0 auto;width:40px;height:40px;border-radius:10px;border:1px solid var(--border);background:var(--panel);color:var(--text);font-size:15px;font-weight:800;cursor:pointer;}
   .lad-step:active{background:var(--panel2);}
@@ -682,6 +708,7 @@
     <h1 style="font-size:22px;margin:6px 2px 10px;">Fast-Select Games</h1>
     <div id="games-body"></div>
     <button class="btn primary btn-lg" style="margin-top:14px;" data-add-game>+ Add a game</button>
+    <button class="btn btn-lg" style="margin-top:8px;" data-bet-tables>⚔️ Bet tables (Attack Ladder)</button>
     <div id="settings-block">
       <h2 class="set-h">Settings</h2>
       <div class="set-row">
@@ -725,7 +752,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.54';
+const APP_VERSION='0.9.55';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -1066,16 +1093,25 @@ function ladderDenom(d){return d<1?(Math.round(d*100)+'¢'):('$'+d);}
 // rebuild the Attack Ladder for a profile by mapping each rung's target bet to the CLOSEST
 // achievable denom×credits — ties broken toward MORE credits (= better jackpot odds, same cost,
 // which is what the machines' own "better jackpot odds" arrow rewards). Bands + lock-ups unchanged.
-const BET_PROFILES={
+// Three profiles ship in code (machines the user photographed). User-built ones live in
+// state.bet_profiles (ct_bet_profiles, synced) and merge in through allProfiles(). A profile is
+// {label,short,note,tiers:[{denoms:[],levels:[]}]}; getProfile(key) resolves either source.
+const BUILTIN_PROFILES={
   flaming_pots:{short:'Flaming Pots',label:'Super Hot Flaming Pots',note:'≥88 credits = all jackpots eligible',
     tiers:[{denoms:[0.01,0.02],levels:[88,176,264,528,880]},{denoms:[0.05,0.10],levels:[38,76,114,152,190]},{denoms:[1,2],levels:[10,20,30,40,50]}]},
   mystery_lamp:{short:'Mystery of the Lamp',label:'Mystery of the Lamp',note:'More credits = better jackpot odds',
     tiers:[{denoms:[0.01,0.02],levels:[80,120,160,240,400]},{denoms:[0.05,0.10],levels:[40,60,80,120,200]},{denoms:[1,2],levels:[8,12,16,24,40]}]},
-  frightful_fortunes:{short:'Frightful Fortunes',label:'Frightful Fortunes',note:'Same 75/150/225/375/750 levels at every denom',
+  frightful_fortunes:{short:'Frightful Fortunes',label:'Frightful Fortunes',note:'Brain Bonanza / Popping Pumpkins — same 75/150/225/375/750 at every denom',
     tiers:[{denoms:[0.01,0.02,0.05,0.10],levels:[75,150,225,375,750]}]},
 };
-const PROFILE_KEYS=Object.keys(BET_PROFILES);
-function profileOptions(p){const out=[];p.tiers.forEach(t=>t.denoms.forEach(d=>t.levels.forEach(c=>out.push({denom:d,credits:c,bet:+(d*c).toFixed(2)}))));return out;}
+function customProfiles(){const m={};(state.bet_profiles||[]).forEach(p=>{
+  if(!p||!p.key||!Array.isArray(p.tiers))return;
+  m[p.key]={label:p.label||p.key,short:p.short||p.label||p.key,note:p.note||'',tiers:p.tiers,custom:true,id:p.id};});return m;}
+function allProfiles(){return {...BUILTIN_PROFILES,...customProfiles()};}
+function profileKeys(){return Object.keys(allProfiles());}
+function getProfile(k){return k?(allProfiles()[k]||null):null;}
+function profileOptions(p){const out=[];(p.tiers||[]).forEach(t=>(t.denoms||[]).forEach(d=>(t.levels||[]).forEach(c=>{
+  d=num(d);c=num(c);if(d>0&&c>0)out.push({denom:d,credits:+c,bet:+(d*c).toFixed(2)});})));return out;}
 function closestBet(opts,target){let best=null;for(const o of opts){if(!best){best=o;continue;}
   const d0=Math.abs(best.bet-target),d1=Math.abs(o.bet-target);
   if(d1<d0-1e-9){best=o;continue;}
@@ -1083,8 +1119,43 @@ function closestBet(opts,target){let best=null;for(const o of opts){if(!best){be
     if(o.bet<best.bet-1e-9)best=o;
     else if(Math.abs(o.bet-best.bet)<1e-9&&o.credits>best.credits)best=o;
   }}return best;}
-const PROFILE_LADDERS={};PROFILE_KEYS.forEach(k=>{const opts=profileOptions(BET_PROFILES[k]);
-  PROFILE_LADDERS[k]=LADDER.map(r=>{const o=closestBet(opts,r.bet);return {...r,denom:o.denom,bet:o.bet};});});
+// Build a profile's Attack Ladder: each rung → the closest achievable denom×credits to the
+// standard bet. Then a DISTINCTNESS pass separates two adjacent rungs that collapsed onto the
+// SAME bet, but only when the machine's menu actually has an unused value that fits strictly
+// between their neighbours (so order + closeness are preserved). Where the menu has no value
+// between — e.g. Frightful Fortunes jumps $4.50 → $7.50 → $11.25 with nothing between, so
+// Attack 2 & 3 both want $7.50 — the duplicate stands. "All rungs different IF POSSIBLE."
+function buildProfileLadder(p){
+  const opts=profileOptions(p);if(!opts.length)return LADDER.slice();
+  const lad=LADDER.map(r=>{const o=closestBet(opts,r.bet);return {...r,_target:r.bet,denom:o.denom,bet:o.bet};});
+  const byBet={};opts.forEach(o=>{if(!byBet[o.bet]||o.credits>byBet[o.bet].credits)byBet[o.bet]=o;}); // best combo per $ (most credits)
+  const uniq=Object.values(byBet).sort((a,b)=>a.bet-b.bet);
+  const setCombo=(r,bet)=>{const o=byBet[bet];r.denom=o.denom;r.bet=o.bet;};
+  // nearest UNUSED value to `tgt` strictly inside (lo,hi)
+  const pick=(tgt,lo,hi,used)=>{let best=null;for(const u of uniq){if(used.has(u.bet))continue;
+    if(u.bet<=lo+1e-9||u.bet>=hi-1e-9)continue;
+    if(!best||Math.abs(u.bet-tgt)<Math.abs(best.bet-tgt)-1e-9)best=u;}return best;};
+  for(let i=1;i<lad.length;i++){
+    if(Math.abs(lad[i].bet-lad[i-1].bet)>1e-9)continue;   // not a collision
+    if(lad[i].name===lad[i-1].name)continue;              // intentional identical group (Attack Max ×3)
+    const used=new Set(lad.map(r=>r.bet));                // recomputed each pass (handles shared values safely)
+    const V=lad[i].bet;
+    // Try: move the LATER rung UP into (V, next-greater). Else move the EARLIER rung DOWN into (prev, V).
+    let hiUp=Infinity;for(let j=i+1;j<lad.length;j++){if(lad[j].bet>V+1e-9){hiUp=lad[j].bet;break;}}
+    const up=pick(lad[i]._target,V,hiUp,used);
+    const loDn=i-2>=0?lad[i-2].bet:0;
+    const dn=pick(lad[i-1]._target,loDn,V,used);
+    // Choose the move that increases that rung's distance-to-target the least.
+    const costUp=up?Math.abs(up.bet-lad[i]._target)-Math.abs(V-lad[i]._target):Infinity;
+    const costDn=dn?Math.abs(dn.bet-lad[i-1]._target)-Math.abs(V-lad[i-1]._target):Infinity;
+    if(up&&costUp<=costDn)setCombo(lad[i],up.bet);
+    else if(dn)setCombo(lad[i-1],dn.bet);
+  }
+  return lad;
+}
+const _ladderCache={};
+function profileLadder(key){const p=getProfile(key);if(!p)return LADDER;
+  const sig=key+'|'+JSON.stringify(p.tiers);return _ladderCache[sig]||(_ladderCache[sig]=buildProfileLadder(p));}
 // Resolve a session's bet-profile key (or null = standard). The catalog game's bet_profile is the
 // source of truth ('standard' = explicit standard); a legacy credit_min===88 maps to flaming_pots.
 // Ad-hoc sessions (no catalog game) use a per-session localStorage override.
@@ -1092,13 +1163,13 @@ function gameForSession(s){return (state.games||[]).find(g=>g.id===s.game_id)||n
 function ladderProfileKey(s){
   const g=gameForSession(s);
   if(g){
-    if(g.bet_profile)return g.bet_profile==='standard'?null:(BET_PROFILES[g.bet_profile]?g.bet_profile:null);
+    if(g.bet_profile)return g.bet_profile==='standard'?null:(getProfile(g.bet_profile)?g.bet_profile:null);
     if(num(g.credit_min)===88)return 'flaming_pots';
     return null;
   }
-  try{const o=localStorage.getItem('ct_lprof_'+s.id);return (o&&BET_PROFILES[o])?o:null;}catch(_){return null;}
+  try{const o=localStorage.getItem('ct_lprof_'+s.id);return (o&&getProfile(o))?o:null;}catch(_){return null;}
 }
-function ladderTable(s){const k=ladderProfileKey(s);return k?PROFILE_LADDERS[k]:LADDER;}
+function ladderTable(s){const k=ladderProfileKey(s);return k?profileLadder(k):LADDER;}
 // Starts minimized behind a pill; only an explicit '1' (user opened it) expands it.
 function ladderOpen(){try{return localStorage.getItem('ct_ladder_open')==='1';}catch(_){return false;}}
 // A fresh session (no stored rung yet) starts on Cruise — the ~$100 buy-in level.
@@ -1133,7 +1204,7 @@ function ladderWidget(s){
 // Paint the dynamic parts (current rung card, slider position, lock-up readout, button states)
 // from the session's rung/lock. Called on bind and after every interaction.
 function renderLadderDynamic(root,s){
-  const pk=ladderProfileKey(s),prof=pk?BET_PROFILES[pk]:null,tbl=ladderTable(s);
+  const pk=ladderProfileKey(s),prof=pk?getProfile(pk):null,tbl=ladderTable(s);
   const {rung,lock}=ladderState(s),r=tbl[rung],L=tbl[lock];
   const cur=root.querySelector('.lad-current');cur.dataset.zone=r.zone;
   const cr=Number((r.bet/r.denom).toFixed(2)); // credits = bet ÷ denom = the machine's BET / bet button
@@ -1157,7 +1228,7 @@ function renderLadderDynamic(root,s){
 // marks the GAME (bet_profile), so it's remembered everywhere and mirrored in the Games tab; for an
 // ad-hoc session it's kept as a local per-session override.
 async function cycleLadderProfile(root,s){
-  const order=[null,...PROFILE_KEYS];
+  const order=[null,...profileKeys()];
   const next=order[(order.indexOf(ladderProfileKey(s))+1)%order.length];
   const g=gameForSession(s);
   if(g){
@@ -1623,6 +1694,7 @@ window.addEventListener('keydown',e=>{
 document.addEventListener('click',e=>{
   if(e.target.closest('[data-close-sheet]'))closeSheet();
   else if(e.target.closest('[data-add-game]'))openGameSheet();
+  else if(e.target.closest('[data-bet-tables]'))openBetTablesSheet();
   else if(e.target.closest('[data-copy-jackpots]'))copyJackpots(lastJackpots);
 });
 
@@ -3092,7 +3164,7 @@ function openGameSheet(game,seed){
       <div><label class="field">Default bet</label><input id="g-bet" inputmode="decimal" value="${g.default_bet??''}"></div></div></div>
     <div id="g-betprofile-wrap" style="${isSlotty(cat)?'':'display:none'}">
       <label class="field">Attack Ladder bet structure</label>
-      <select id="g-betprofile">${['standard',...PROFILE_KEYS].map(k=>`<option value="${k}">${k==='standard'?'Standard':esc(BET_PROFILES[k].label)}</option>`).join('')}</select>
+      <select id="g-betprofile">${['standard',...profileKeys()].map(k=>`<option value="${k}">${k==='standard'?'Standard':esc(getProfile(k).label)}</option>`).join('')}</select>
       <div class="muted" style="font-size:11px;margin-top:4px;">For credit-based machines — the ladder picks the denom + credit bet level closest to each rung.</div>
     </div>
     <label class="field">Default buy-in (optional)</label>
@@ -3125,7 +3197,7 @@ function openGameSheet(game,seed){
     enableCents(document.getElementById('g-bet'));
     applyStrategyUI('g',selCat);
     // Bet-structure profile for credit-based machines (slot games only).
-    let selProfile=(g.bet_profile&&(g.bet_profile==='standard'||BET_PROFILES[g.bet_profile]))?g.bet_profile:(num(g.credit_min)===88?'flaming_pots':'standard');
+    let selProfile=(g.bet_profile&&(g.bet_profile==='standard'||getProfile(g.bet_profile)))?g.bet_profile:(num(g.credit_min)===88?'flaming_pots':'standard');
     const bpSel=document.getElementById('g-betprofile');if(bpSel){bpSel.value=selProfile;bpSel.addEventListener('change',()=>selProfile=bpSel.value);}
     document.querySelectorAll('#g-cat button').forEach(b=>b.addEventListener('click',()=>{
       selCat=b.dataset.cat;document.querySelectorAll('#g-cat button').forEach(x=>x.classList.toggle('sel',x===b));
@@ -3188,6 +3260,113 @@ function openGameSheet(game,seed){
         image_url:imageUrl||'',art_bg:(imageUrl&&artBg)?artBg:null,
         dupe_from:(g.id?null:(g.dupe_from||null))}));
     });
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  BET TABLES — build/manage credit-based machine bet menus for the Attack Ladder.
+//  A table = tiers of {denoms, levels}; the ladder maps each rung to the closest
+//  denom×credits (buildProfileLadder). Entry point: Games tab → "Bet tables".
+// ═══════════════════════════════════════════════════════════════════════════
+const DENOM_PALETTE=[0.01,0.02,0.05,0.10,0.25,0.50,1,2,5];
+function profileSummary(p){const d=new Set();(p.tiers||[]).forEach(t=>(t.denoms||[]).forEach(x=>d.add(num(x))));
+  const g=(p.tiers||[]).length;return `${d.size} denom${d.size===1?'':'s'} · ${g} group${g===1?'':'s'}`;}
+// The computed Attack Ladder as a compact table (used in the builder preview and the view sheet).
+function ladderPreviewHTML(p){
+  if(!profileOptions(p).length)return '<div class="muted" style="font-size:12px;padding:6px 2px;">Pick a denomination and type in some bet levels to see the ladder.</div>';
+  const lad=buildProfileLadder(p);
+  const rows=lad.map((r,i)=>{const cr=Math.round(r.bet/r.denom);
+    const dup=i>0&&r.name!==lad[i-1].name&&Math.abs(r.bet-lad[i-1].bet)<1e-9;
+    return `<tr><td class="bpl-rung">${esc(r.name)}</td><td class="bpl-combo">${ladderDenom(r.denom)} × ${cr}</td><td class="bpl-bet${dup?' dup':''}">${money(r.bet)}</td></tr>`;}).join('');
+  return `<table class="bpl-table"><thead><tr><th>Rung</th><th>Set machine to</th><th>Bet</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+function openLadderPreviewSheet(key){const p=getProfile(key);if(!p)return;
+  openSheet(p.label,`${p.note?`<div class="muted" style="font-size:12px;margin-bottom:8px;">${esc(p.note)}</div>`:''}
+    <div class="bpl-wrap">${ladderPreviewHTML(p)}</div>
+    <div class="sheet-actions"><button class="btn primary" data-close-sheet>Done</button></div>`);}
+
+function openBetTablesSheet(){
+  const custom=customProfiles();const ckeys=Object.keys(custom);
+  const bikeys=Object.keys(BUILTIN_PROFILES);
+  const customRows=ckeys.length?ckeys.map(k=>{const p=custom[k];return `<div class="bt-row">
+      <button class="bt-row-main" data-bt-view="${esc(k)}"><div class="bt-row-name">${esc(p.label)}</div><div class="bt-row-sub">${esc(profileSummary(p))}</div></button>
+      <button class="bt-mini" data-bt-edit="${esc(k)}">Edit</button>
+      <button class="bt-mini danger" data-bt-del="${esc(k)}">Delete</button>
+    </div>`;}).join(''):`<div class="muted" style="font-size:12px;padding:4px 2px 8px;">No tables of your own yet — tap “New machine table”, or “Customize” a built-in below.</div>`;
+  const biRows=bikeys.map(k=>{const p=BUILTIN_PROFILES[k];return `<div class="bt-row">
+      <button class="bt-row-main" data-bt-view="${esc(k)}"><div class="bt-row-name">${esc(p.label)} <span class="bt-tag">built-in</span></div><div class="bt-row-sub">${esc(profileSummary(p))}</div></button>
+      <button class="bt-mini" data-bt-copy="${esc(k)}">Customize</button>
+    </div>`;}).join('');
+  openSheet('Bet tables',`
+    <div class="muted" style="font-size:12px;margin-bottom:10px;">Each table is one credit-based machine's bet menu (Hot Pot, Dancing Drums, Frightful Fortunes…). The ⚔️ Attack Ladder uses it to pick the denom + credit bet closest to every rung. Build your own right at the machine.</div>
+    <button class="btn primary" id="bt-new" style="width:100%;">+ New machine table</button>
+    <div class="bt-sec">Your tables</div>${customRows}
+    <div class="bt-sec">Built-in</div>${biRows}
+  `,()=>{
+    document.getElementById('bt-new').addEventListener('click',()=>openBetTableBuilder(null));
+    document.querySelectorAll('[data-bt-view]').forEach(b=>b.addEventListener('click',()=>openLadderPreviewSheet(b.dataset.btView)));
+    document.querySelectorAll('[data-bt-edit]').forEach(b=>b.addEventListener('click',()=>{
+      const p=getProfile(b.dataset.btEdit);if(p)openBetTableBuilder({id:p.id,key:b.dataset.btEdit,label:p.label,note:p.note,tiers:p.tiers});}));
+    document.querySelectorAll('[data-bt-copy]').forEach(b=>b.addEventListener('click',()=>{
+      const p=BUILTIN_PROFILES[b.dataset.btCopy];if(p)openBetTableBuilder({label:p.label+' (my copy)',note:p.note,tiers:JSON.parse(JSON.stringify(p.tiers))});}));
+    document.querySelectorAll('[data-bt-del]').forEach(b=>b.addEventListener('click',async()=>{
+      const p=getProfile(b.dataset.btDel);if(!p)return;
+      if(!await confirmDialog(`Delete “${p.label}”? Games using it fall back to the standard ladder.`,{confirmLabel:'Delete',danger:true}))return;
+      const r=await api('ct-write',{action:'delete-bet-profile',id:p.id});
+      if(r&&r.ok){applyBootstrap(r.bootstrap);cacheState();renderGames();openBetTablesSheet();}
+      else toast((r&&r.error)||'Couldn’t delete.');}));
+  });
+}
+
+// Build/edit one table. `profile` null = new; else {id?,key?,label,note,tiers}. No id ⇒ saves new.
+function openBetTableBuilder(profile){
+  const tierCard=(tier)=>{const sel=new Set((tier&&tier.denoms||[]).map(num));
+    const chips=DENOM_PALETTE.map(d=>`<button type="button" class="bt-denom${sel.has(d)?' sel':''}" data-denom="${d}">${ladderDenom(d)}</button>`).join('');
+    const levels=(tier&&tier.levels)?tier.levels.join(' '):'';
+    return `<div class="bt-tier"><div class="bt-tier-h"><span>Denominations</span><button type="button" class="bt-tier-x" data-tier-rm aria-label="Remove group">✕</button></div>
+      <div class="bt-denoms">${chips}</div>
+      <label class="field" style="margin-top:8px;">Bet levels for these denoms (credits)</label>
+      <input class="bt-levels" inputmode="numeric" placeholder="75 150 225 375 750" value="${esc(levels)}"></div>`;};
+  const startTiers=(profile&&profile.tiers&&profile.tiers.length)?profile.tiers:[{denoms:[],levels:[]}];
+  openSheet(profile&&profile.id?'Edit bet table':'New bet table',`
+    <div class="muted" style="font-size:12px;margin-bottom:8px;">Enter a machine's bet menu — the denominations and the credit bet levels you can pick. The ladder rebuilds to the closest bet on this machine and keeps rungs distinct wherever the menu allows.</div>
+    <label class="field">Machine name</label>
+    <input id="bt-name" placeholder="Hot Pot · Dancing Drums · 88 Fortunes" value="${esc(profile?profile.label:'')}" autocomplete="off">
+    <div id="bt-tiers">${startTiers.map(tierCard).join('')}</div>
+    <button class="btn" id="bt-add-tier" style="width:100%;margin-top:2px;">+ Add a denomination group</button>
+    <div class="muted" style="font-size:11px;margin-top:6px;">Most machines need one group. Add another only when some denominations use <b>different</b> bet levels (e.g. 1¢–2¢ differ from 5¢–10¢).</div>
+    <label class="field" style="margin-top:12px;">Note (optional)</label>
+    <input id="bt-note" placeholder="e.g. ≥88 credits = all jackpots eligible" value="${esc(profile&&profile.note?profile.note:'')}" autocomplete="off">
+    <div class="bpl-wrap"><div class="bpl-head">⚔️ Attack Ladder preview</div><div id="bt-preview"></div></div>
+    <div class="sheet-actions"><button class="btn" data-close-sheet>Cancel</button><button class="btn primary" id="bt-save">Save table</button></div>
+  `,()=>{
+    const tiersEl=document.getElementById('bt-tiers');
+    const readProfile=()=>{const tiers=[];
+      tiersEl.querySelectorAll('.bt-tier').forEach(tc=>{
+        const denoms=[...tc.querySelectorAll('.bt-denom.sel')].map(x=>parseFloat(x.dataset.denom));
+        const levels=(tc.querySelector('.bt-levels').value.match(/\d+(?:\.\d+)?/g)||[]).map(Number).filter(n=>n>0);
+        if(denoms.length&&levels.length)tiers.push({denoms,levels});});
+      return {label:(document.getElementById('bt-name').value.trim()||'Machine'),note:document.getElementById('bt-note').value.trim(),tiers};};
+    const refresh=()=>{document.getElementById('bt-preview').innerHTML=ladderPreviewHTML(readProfile());};
+    const addTier=()=>{tiersEl.insertAdjacentHTML('beforeend',tierCard({denoms:[],levels:[]}));refresh();};
+    document.getElementById('bt-add-tier').addEventListener('click',addTier);
+    tiersEl.addEventListener('click',e=>{
+      const dn=e.target.closest('.bt-denom');if(dn){dn.classList.toggle('sel');refresh();return;}
+      const rm=e.target.closest('[data-tier-rm]');if(rm){if(tiersEl.querySelectorAll('.bt-tier').length>1)rm.closest('.bt-tier').remove();else toast('Keep at least one group.');refresh();}});
+    tiersEl.addEventListener('input',e=>{if(e.target.classList.contains('bt-levels'))refresh();});
+    refresh();
+    document.getElementById('bt-save').addEventListener('click',async()=>{
+      const name=document.getElementById('bt-name').value.trim();
+      if(!name)return toast('Give the machine a name.');
+      const prof=readProfile();
+      if(!prof.tiers.length)return toast('Pick a denomination and add at least one bet level.');
+      const payload={action:'save-bet-profile',label:name,short:name.slice(0,40),
+        note:document.getElementById('bt-note').value.trim()||null,tiers:prof.tiers};
+      if(profile&&profile.id)payload.id=profile.id;
+      else payload.key=('u_'+(name.toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'').slice(0,22)||'table')+'_'+Math.random().toString(36).slice(2,6)).slice(0,40);
+      const r=await api('ct-write',payload);
+      if(r&&r.ok){applyBootstrap(r.bootstrap);cacheState();renderGames();openBetTablesSheet();toast('Saved.');}
+      else toast((r&&r.error)||'Couldn’t save.');});
   });
 }
 
@@ -3272,6 +3451,10 @@ function mockSeed(){
       {id:'h5',account_id:'me',game_id:null,game_name:'Clear every Dragon Link jackpot level',category:'goal',done:false,sort_order:4,created_at:t+'T00:00:00',
         challenges:[{id:'hc5',text:'Minor',done:true},{id:'hc6',text:'Major',done:false},{id:'hc7',text:'Grand',done:false}]},
     ],
+    bet_profiles:[
+      {id:'bp1',account_id:'me',key:'u_brain_bonanza_demo',label:'Brain Bonanza (demo)',short:'Brain Bonanza',note:'User-built table (demo)',sort_order:0,archived:false,created_at:t+'T00:00:00',
+        tiers:[{denoms:[0.01,0.02,0.05,0.10],levels:[75,150,225,375,750]}]},
+    ],
   };
 }
 function mockBootstrap(today){
@@ -3297,7 +3480,7 @@ function mockBootstrap(today){
   const theme_casino=(active_trip&&active_trip.casino)||(lastTrip&&lastTrip.casino)||null;
   return {today,games,active_trip,active_trip_totals,sessions,carryover_open,stakes:(mockDB.stakes||[]).slice(),
     comps:(mockDB.comps||[]).slice(),comp_casinos:(mockDB.comp_casinos||[]).slice(),recent_games,theme_casino,
-    hitlist:(mockDB.hitlist||[]).slice()};
+    hitlist:(mockDB.hitlist||[]).slice(),bet_profiles:(mockDB.bet_profiles||[]).filter(p=>!p.archived).slice()};
 }
 function mockRecompute(s){s.buy_in_total=s.buyins.reduce((x,b)=>x+num(b.amount),0);}
 function mockId(p){return p+Math.random().toString(36).slice(2,8);}
@@ -3388,7 +3571,27 @@ function mockWrite(b){
     challenges:mockChallenges(b.challenges),done:b.done===true,sort_order:n,created_at:new Date().toISOString()});}
   else if(a==='hitlist-update'){const it=(mockDB.hitlist||[]).find(x=>x.id===b.id);if(it){if('challenges' in b)it.challenges=mockChallenges(b.challenges);if('done' in b)it.done=b.done===true;}}
   else if(a==='hitlist-remove'){const ids=Array.isArray(b.ids)?b.ids:(b.id?[b.id]:[]);mockDB.hitlist=(mockDB.hitlist||[]).filter(x=>!ids.includes(x.id));}
+  else if(a==='save-bet-profile'){
+    const tiers=mockCleanTiers(b.tiers);const label=String(b.label||'').trim().slice(0,60);
+    if(!label||!tiers.length)return;
+    const short=(String(b.short||'').trim()||label).slice(0,40);const note=(String(b.note||'').trim()||'').slice(0,120)||null;
+    mockDB.bet_profiles=mockDB.bet_profiles||[];
+    if(b.id){const it=mockDB.bet_profiles.find(x=>x.id===b.id);if(it){it.label=label;it.short=short;it.note=note;it.tiers=tiers;}}
+    else{const key=String(b.key||'').trim().slice(0,40);if(!/^[a-z0-9_]{3,40}$/.test(key))return;
+      const dup=mockDB.bet_profiles.find(x=>x.key===key);
+      if(dup){dup.label=label;dup.short=short;dup.note=note;dup.tiers=tiers;dup.archived=false;}
+      else{const n=mockDB.bet_profiles.reduce((m,r)=>Math.max(m,num(r.sort_order)+1),0);
+        mockDB.bet_profiles.push({id:mockId('bp'),account_id:'me',key,label,short,note,tiers,sort_order:n,archived:false,created_at:new Date().toISOString()});}}}
+  else if(a==='delete-bet-profile'){const it=(mockDB.bet_profiles||[]).find(x=>x.id===b.id);
+    if(it){it.archived=true;mockDB.games.forEach(g=>{if(g.bet_profile===it.key)g.bet_profile=null;});}}
 }
+// Mirror the server's cleanTiers: array of {denoms:number[], levels:int[]}, positive and de-duped.
+function mockCleanTiers(raw){if(!Array.isArray(raw))return [];const out=[];
+  for(const t of raw){if(!t||typeof t!=='object')continue;
+    const denoms=[...new Set((Array.isArray(t.denoms)?t.denoms:[]).map(Number).filter(n=>n>0&&n<=1000))];
+    const levels=[...new Set((Array.isArray(t.levels)?t.levels:[]).map(Number).filter(n=>Number.isFinite(n)&&n>0&&n<=100000).map(n=>Math.round(n)))];
+    if(denoms.length&&levels.length)out.push({denoms,levels});}
+  return out.slice(0,8);}
 function mockStats(){
   const sessions=mockDB.sessions;const closed=sessions.filter(s=>s.cash_out!=null);
   const net=s=>num(s.cash_out)-num(s.buy_in_total);
