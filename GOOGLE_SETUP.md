@@ -33,7 +33,10 @@ Then use the left-nav sections:
 1. **Branding** →
    - **App home page:** `https://deckofmanythings-a11y.github.io/casino-tracker/`
    - **Privacy policy:** `https://deckofmanythings-a11y.github.io/casino-tracker/privacy.html`
-   - **Authorized domains:** add `github.io`
+   - **Authorized domains:** add `deckofmanythings-a11y.github.io` (the FULL subdomain — `github.io`
+     alone is rejected as a public suffix). If Google demands Search Console verification of it, you can
+     **leave this empty for now** — authorized domains + the URL fields are only required when you
+     publish for verification (Part 2), not for Testing-mode use or for creating the Client ID.
    - App logo: optional (square PNG; makes the consent screen look trustworthy). → Save.
 2. **Audience** → **Test users → Add users** → your own Google account. Leave status as **Testing** for now.
 3. **Data Access** → **Add or remove scopes** → add these, then **Update → Save**:
