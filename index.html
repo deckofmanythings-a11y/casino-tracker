@@ -13,6 +13,7 @@
 <link rel="icon" type="image/svg+xml" href="icon.svg?v=1">
 <link rel="icon" type="image/png" sizes="180x180" href="apple-touch-icon.png?v=1">
 <script src="sb-client.bundle.js?v=1"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
   :root{
     color-scheme:dark;
@@ -422,6 +423,10 @@
   /* ── Auth screen ────────────────────────────────────────── */
   #auth-screen{display:none;flex:1 1 auto;min-height:0;overflow-y:auto;align-items:center;justify-content:center;padding:24px;}
   #auth-screen.show{display:flex;}
+  .gbtn{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;background:#fff;color:#1f1f1f;border:1px solid #dadce0;font-weight:600;}
+  .gbtn:active{background:#f1f3f4;}
+  .gbtn:disabled{opacity:.6;}
+  .gicon{width:18px;height:18px;flex:0 0 auto;}
   .auth-card{width:100%;max-width:360px;background:var(--panel);border:1px solid var(--border);
     border-radius:18px;padding:24px 20px;box-shadow:var(--shadow);}
   .auth-brand{font-size:24px;font-weight:800;text-align:center;letter-spacing:-.5px;}
@@ -680,6 +685,13 @@
         <span id="a-toggle" class="auth-link">Need an account? <b>Sign up</b></span>
       </div>
     </div>
+    <div id="g-signin-wrap" style="display:none;">
+      <button class="btn btn-lg gbtn" id="g-signin">
+        <svg class="gicon" viewBox="0 0 18 18" aria-hidden="true"><path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.71-1.57 2.68-3.88 2.68-6.62z"/><path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.8.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.03-3.7H.96v2.33A9 9 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.97 10.72A5.41 5.41 0 0 1 3.68 9c0-.6.1-1.18.29-1.72V4.95H.96A9 9 0 0 0 0 9c0 1.45.35 2.82.96 4.05l3.01-2.33z"/><path fill="#EA4335" d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.59C13.47.89 11.43 0 9 0A9 9 0 0 0 .96 4.95l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58z"/></svg>
+        Sign in with Google
+      </button>
+      <div class="muted" style="font-size:12.5px;margin-top:16px;line-height:1.5;">Your tracker is stored privately in <b>your own Google Drive</b>. No one else — not even this app's developer — can see it.</div>
+    </div>
     <div id="auth-reset" style="display:none;">
       <div class="muted" style="font-size:13px;margin-bottom:6px;">Set a new password for your account.</div>
       <label class="field">New password</label>
@@ -790,7 +802,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.57';
+const APP_VERSION='0.9.58';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -815,6 +827,19 @@ window.addEventListener('unhandledrejection',e=>reportErr('promise',e));
 function withTimeout(p,ms,label){return Promise.race([p,new Promise((_,r)=>setTimeout(()=>r(new Error(label+' timed out')),ms))]);}
 const MOCK=new URLSearchParams(location.search).has('mock');
 
+// ── Google Drive storage ───────────────────────────────────────────────────
+// Each user's data lives in ONE JSON file in their OWN Google Drive (drive.file scope — the app
+// can only touch files it creates). Google Sign-In provides identity; Drive is the database.
+// No developer-run server stores user data. When DRIVE is on, the local engine (the former "mock"
+// engine) IS the live engine, persisted to Drive.
+const GOOGLE_CLIENT_ID='745353300003-h73ergl5l5rvqr3ulp7g3elugd36aq2q.apps.googleusercontent.com';
+// During the Supabase→Drive transition, Drive mode is opt-in via ?drive=1 so the live app keeps
+// working on Supabase (with your existing data) until the one-time importer runs. Flip this to
+// `!MOCK && !!GOOGLE_CLIENT_ID` to make Drive the default for everyone.
+const DRIVE=!MOCK && !!GOOGLE_CLIENT_ID && new URLSearchParams(location.search).has('drive');
+const DRIVE_SCOPE='openid email profile https://www.googleapis.com/auth/drive.file';
+const DRIVE_FILE_NAME='casino-tracker-data.json';
+
 const SUPABASE_URL='https://uaoxvhihwiygrajicend.supabase.co';
 const FUNCTIONS_URL=SUPABASE_URL+'/functions/v1';
 const SUPABASE_ANON_KEY='sb_publishable_91Zn_uJ9anW46vAClx6-bQ__wLL4fXl';
@@ -828,6 +853,7 @@ function genKey(){try{if(crypto.randomUUID)return crypto.randomUUID();}catch(_){
 // Cache last-known state so a reload paints instantly instead of flashing a spinner.
 // Tagged with the owner's auth user id so it is NEVER shown to a different user.
 function cacheState(){
+  if(DRIVE){try{if(mockDB&&account)localStorage.setItem('ct_drive_db_'+account.id,JSON.stringify(mockDB));}catch(_){}return;}
   try{localStorage.setItem(CACHE_KEY,JSON.stringify({uid:account&&account.auth_user_id,account,bootstrap:{
     today:state.today,games:state.games,active_trip:state.active_trip,
     active_trip_totals:state.active_trip_totals,sessions:state.sessions,stakes:state.stakes,
@@ -1322,12 +1348,124 @@ async function currentToken(){
   try{const {data}=await sb.auth.getSession();return data&&data.session?data.session.access_token:null;}catch(_){return null;}
 }
 async function api(name,payload){
-  if(MOCK)return mockApi(name,payload);
+  if(MOCK||DRIVE)return localApi(name,payload);
   const token=await currentToken();
   return callFn(name,{...payload,today:(payload&&payload.today)||state.today},token);
 }
 // Apply a bootstrap payload returned by any read/write to local state.
 function applyBootstrap(b){if(!b)return;state={...state,...b};applyCasinoTheme(state.theme_casino);}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Google Drive backend (DRIVE mode) — Google Sign-In for identity, one JSON
+//  file in the user's own Drive for storage. The local engine (mockWrite /
+//  mockBootstrap, below) runs the mutations; this layer just loads & persists.
+// ═══════════════════════════════════════════════════════════════════════════
+function emptyDB(acct){return {account:acct,games:[],trips:[],sessions:[],stakes:[],comps:[],comp_casinos:[],hitlist:[],bet_profiles:[],household:[],_rev:0};}
+let gTokenClient=null,gAccessToken=null,gTokenExp=0;
+let driveFileId=null,driveVersion=0,driveSaveTimer=null,driveSaving=false,driveDirty=false;
+
+function gisLoaded(){return !!(window.google&&google.accounts&&google.accounts.oauth2);}
+function waitForGis(ms=9000){return new Promise((res,rej)=>{const t0=Date.now();(function chk(){
+  if(gisLoaded())return res();if(Date.now()-t0>ms)return rej(new Error('Google sign-in failed to load'));setTimeout(chk,100);})();});}
+let _tokResolve=null,_tokReject=null;
+function initTokenClient(){if(gTokenClient)return;
+  gTokenClient=google.accounts.oauth2.initTokenClient({client_id:GOOGLE_CLIENT_ID,scope:DRIVE_SCOPE,
+    callback:(resp)=>{
+      if(resp&&resp.error){if(_tokReject)_tokReject(new Error(resp.error));return;}
+      gAccessToken=resp.access_token;gTokenExp=Date.now()+((resp.expires_in||3600)*1000);
+      if(_tokResolve)_tokResolve(gAccessToken);},
+    error_callback:(err)=>{if(_tokReject)_tokReject(new Error((err&&(err.type||err.message))||'auth_failed'));}});}
+// Get an access token. interactive=true pops Google's account/consent UI (needs a user gesture);
+// false tries silently (works once granted + a live Google session).
+function getToken(interactive){return new Promise((resolve,reject)=>{
+  if(gAccessToken&&Date.now()<gTokenExp-60000)return resolve(gAccessToken);
+  initTokenClient();_tokResolve=resolve;_tokReject=reject;
+  try{gTokenClient.requestAccessToken({prompt:interactive?'consent':''});}catch(e){reject(e);}
+});}
+async function driveFetch(url,opts){opts=opts||{};opts.headers=Object.assign({Authorization:'Bearer '+gAccessToken},opts.headers||{});
+  let res=await fetch(url,opts);
+  if(res.status===401){gAccessToken=null;await getToken(false);opts.headers.Authorization='Bearer '+gAccessToken;res=await fetch(url,opts);}
+  return res;}
+async function googleUserInfo(){const res=await driveFetch('https://www.googleapis.com/oauth2/v3/userinfo');
+  if(!res.ok)throw new Error('Could not read your Google profile');return res.json();}
+async function driveFindFile(){
+  const q=encodeURIComponent("name='"+DRIVE_FILE_NAME+"' and trashed=false");
+  const res=await driveFetch('https://www.googleapis.com/drive/v3/files?q='+q+'&spaces=drive&fields=files(id,version)&pageSize=10');
+  if(!res.ok)throw new Error('Drive search failed ('+res.status+')');
+  const j=await res.json();return (j.files&&j.files[0])||null;}
+async function driveWrite(obj){
+  const res=await driveFetch('https://www.googleapis.com/upload/drive/v3/files/'+driveFileId+'?uploadType=media&fields=version',
+    {method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(obj)});
+  if(!res.ok)throw new Error('Drive save failed ('+res.status+')');
+  const j=await res.json();driveVersion=Number(j.version||0);}
+async function driveCreateFile(obj){
+  const m=await driveFetch('https://www.googleapis.com/drive/v3/files',
+    {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:DRIVE_FILE_NAME})});
+  if(!m.ok)throw new Error('Drive create failed ('+m.status+')');
+  driveFileId=(await m.json()).id;await driveWrite(obj);}
+async function driveReadContent(){const res=await driveFetch('https://www.googleapis.com/drive/v3/files/'+driveFileId+'?alt=media');
+  if(!res.ok)throw new Error('Drive load failed ('+res.status+')');return res.json();}
+function serializeDB(){mockDB._rev=(mockDB._rev||0)+1;mockDB._savedAt=new Date().toISOString();mockDB._schema=1;return mockDB;}
+// Coerce a loaded file into the in-memory DB shape; account is always the current Google identity.
+function normalizeDB(data,acct){const d=(data&&typeof data==='object')?data:{};const db=emptyDB(acct);
+  ['games','trips','sessions','stakes','comps','comp_casinos','hitlist','bet_profiles','household'].forEach(k=>{if(Array.isArray(d[k]))db[k]=d[k];});
+  db.sessions.forEach(s=>{s.buyins=s.buyins||[];s.bonuses=s.bonuses||[];});
+  db._rev=d._rev||0;return db;}
+async function driveLoadDB(acct){
+  try{
+    const f=await driveFindFile();
+    if(f){driveFileId=f.id;driveVersion=Number(f.version||0);mockDB=normalizeDB(await driveReadContent(),acct);}
+    else{mockDB=emptyDB(acct);await driveCreateFile(serializeDB());}
+  }catch(e){ // offline / Drive error — fall back to the last local copy if we have one
+    let cached=null;try{cached=JSON.parse(localStorage.getItem('ct_drive_db_'+acct.id));}catch(_){}
+    if(cached){mockDB=normalizeDB(cached,acct);toast('Offline — showing your last saved data.');}
+    else throw e;
+  }}
+// Debounced save after every mutation. Also keeps a local copy for offline/instant reloads.
+function scheduleDriveSave(){driveDirty=true;try{localStorage.setItem('ct_drive_db_'+(account&&account.id),JSON.stringify(mockDB));}catch(_){}
+  if(driveSaveTimer)clearTimeout(driveSaveTimer);driveSaveTimer=setTimeout(flushDriveSave,1200);}
+async function flushDriveSave(){
+  if(driveSaving){driveSaveTimer=setTimeout(flushDriveSave,500);return;}
+  if(!driveDirty||!driveFileId)return;
+  driveSaving=true;driveDirty=false;
+  try{await driveWrite(serializeDB());}
+  catch(e){driveDirty=true;toast('Couldn’t sync to Google Drive — will retry.');}
+  finally{driveSaving=false;if(driveDirty)driveSaveTimer=setTimeout(flushDriveSave,2500);}}
+function reloadFromLocalDB(){applyBootstrap(mockBootstrap(todayLocal()));
+  const t=currentTab;
+  if(t==='today')renderToday();else if(t==='comps')renderComps();else if(t==='games')renderGames();
+  else if(t==='bankroll')renderBankroll();else if(t==='hitlist')renderHitlist();else if(t==='settings')renderSettings();
+  else if(t==='history')loadHistory();else if(t==='stats')loadStats();}
+// On resume: if another device saved a newer version, reload it.
+async function driveResume(){
+  if(!driveFileId)return;
+  try{const res=await driveFetch('https://www.googleapis.com/drive/v3/files/'+driveFileId+'?fields=version');
+    if(!res.ok)return;const v=Number((await res.json()).version||0);
+    if(v>driveVersion){driveVersion=v;mockDB=normalizeDB(await driveReadContent(),account);reloadFromLocalDB();}
+  }catch(_){}}
+
+// Boot: silent resume if the user signed in before, else show the Google button.
+async function startDrive(){
+  showSplash('Loading…');
+  try{await waitForGis();}catch(e){showSplash('Couldn’t load Google sign-in. Check your connection and reload.');$('auth-reconnect').style.display='block';return;}
+  let wasIn=false;try{wasIn=localStorage.getItem('ct_google_signed_in')==='1';}catch(_){}
+  if(wasIn){try{await getToken(false);await driveSignedIn();return;}catch(e){/* fall through to the button */}}
+  showAuthScreen('login');
+}
+async function driveSignInInteractive(){
+  const btn=$('g-signin'),err=$('a-err');if(err)err.textContent='';
+  if(btn){btn.disabled=true;}
+  try{await getToken(true);try{localStorage.setItem('ct_google_signed_in','1');}catch(_){}await driveSignedIn();}
+  catch(e){if(btn){btn.disabled=false;}if(err){err.style.color='var(--loss)';err.textContent=(e&&e.message&&e.message!=='popup_closed')?('Sign-in failed: '+e.message):'Sign-in was cancelled.';}}
+}
+async function driveSignedIn(){
+  showSplash('Loading your tracker…');
+  const info=await googleUserInfo();
+  const acct={id:info.sub,auth_user_id:info.sub,email:info.email,name:info.name};
+  userEmail=info.email;
+  await driveLoadDB(acct);
+  boot(acct,mockBootstrap(todayLocal()));
+}
 
 // ── Auth (Supabase email/password) ─────────────────────────────────────────
 function callFnT(name,payload,ms=15000){return withTimeout(api(name,payload),ms,name).catch(e=>({ok:false,message:(e&&e.message)||String(e)}));}
@@ -1340,8 +1478,16 @@ let authMode='login';
 function showAuthScreen(mode){
   authMode=mode||'login';
   hideSplash();$('app').classList.remove('show');
-  $('auth-reset').style.display='none';$('auth-forms').style.display='block';
+  $('auth-reset').style.display='none';
   $('auth-screen').classList.add('show');$('a-err').textContent='';$('a-err').style.color='';
+  if(DRIVE){ // Google-only sign-in
+    $('auth-forms').style.display='none';
+    const gw=$('g-signin-wrap');if(gw)gw.style.display='block';
+    const gb=$('g-signin');if(gb){gb.disabled=false;if(!gb._bound){gb._bound=1;gb.addEventListener('click',driveSignInInteractive);}}
+    $('auth-tagline').textContent='Private tracking, stored in your own Google Drive.';
+    return;
+  }
+  $('auth-forms').style.display='block';
   const signup=authMode==='signup';
   $('a-submit').textContent=signup?'Sign up':'Log in';
   $('a-forgot').style.display=signup?'none':'block';
@@ -1423,8 +1569,14 @@ function boot(acct,bootstrap){
 }
 
 async function doSignOut(){
-  try{await sb.auth.signOut();}catch(_){}
-  try{localStorage.removeItem(CACHE_KEY);}catch(_){}
+  if(DRIVE){
+    try{if(driveSaveTimer){clearTimeout(driveSaveTimer);}if(driveDirty)await flushDriveSave();}catch(_){}
+    gAccessToken=null;gTokenExp=0;driveFileId=null;driveVersion=0;mockDB=null;
+    try{localStorage.removeItem('ct_google_signed_in');}catch(_){}
+  }else{
+    try{await sb.auth.signOut();}catch(_){}
+    try{localStorage.removeItem(CACHE_KEY);}catch(_){}
+  }
   account=null;booted=false;userEmail=null;
   state={today:todayLocal(),games:[],active_trip:null,active_trip_totals:null,sessions:[],carryover_open:[],stakes:[],comps:[],comp_casinos:[],recent_games:[],hitlist:[],bet_profiles:[],household:[]};
   $('app').classList.remove('show');
@@ -1436,6 +1588,7 @@ async function doSignOut(){
 let resuming=false;
 async function onResume(){
   if(MOCK||resuming||!booted||document.visibilityState!=='visible')return;
+  if(DRIVE){resuming=true;try{state.today=todayLocal();await driveResume();}finally{resuming=false;}return;}
   resuming=true;
   try{
     state.today=todayLocal();
@@ -2071,9 +2224,6 @@ function openCashoutSheet(sessionId){
     <div class="muted" style="font-size:13px;margin-bottom:8px;">${esc(s?.game_name||'')} · bought in ${money(s?.buy_in_total)}</div>
     <label class="field">Cash-out amount</label>
     <div class="money-input"><span class="dollar">$</span><input id="co-amt" inputmode="decimal" placeholder="0"></div>
-    ${usesCents(s?.category)?`<button class="btn" id="co-scan" style="margin-top:10px;">📷 Scan TITO ticket</button>
-    <input type="file" id="co-file" accept="image/*" capture="environment" style="display:none">
-    <div id="co-scan-status" class="muted" style="font-size:12px;margin-top:6px;min-height:14px;"></div>`:''}
     <div class="mult-preview">Session net<b id="co-net">—</b></div>
     <div class="sheet-actions"><button class="btn" data-close-sheet>Cancel</button>
       <button class="btn primary" id="co-done">End session</button></div>
@@ -2083,30 +2233,6 @@ function openCashoutSheet(sessionId){
     function recalc(){const n=num(amt.value)-num(s?.buy_in_total);net.textContent=signMoney(n);
       net.className='';net.classList.add(netClass(n));}
     amt.addEventListener('input',recalc);amt.focus();recalc();
-
-    // TITO ticket scan: take/pick a photo, downscale it, read the cash value, prefill.
-    const scanBtn=document.getElementById('co-scan');
-    if(scanBtn){
-      const fileInput=document.getElementById('co-file');
-      const status=document.getElementById('co-scan-status');
-      scanBtn.addEventListener('click',()=>fileInput.click());
-      fileInput.addEventListener('change',async()=>{
-        const f=fileInput.files&&fileInput.files[0];
-        if(!f)return;
-        scanBtn.disabled=true;status.textContent='Reading ticket…';
-        try{
-          const {data,media_type}=await fileToScaledBase64(f);
-          const resp=await api('ct-scan-ticket',{image:data,media_type});
-          if(resp&&resp.ok&&resp.amount!=null){
-            amt.value=resp.amount;recalc();
-            status.innerHTML='Read <b style="color:var(--gold)">'+money(resp.amount)+'</b> — check it, then End session.';
-          }else{
-            status.textContent=(resp&&resp.message)||'Couldn’t read a value — enter it manually.';
-          }
-        }catch(e){status.textContent='Scan failed — enter it manually.';}
-        finally{scanBtn.disabled=false;fileInput.value='';}
-      });
-    }
 
     const coBtn=document.getElementById('co-done');
     coBtn.addEventListener('click',async()=>{
@@ -2217,8 +2343,15 @@ function fileToFitBlob(file,maxDim=512,quality=0.85){
   });
 }
 // Upload tile art to the user's folder in the public bucket; return the public URL.
+function blobToDataUrl(blob){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=()=>rej(new Error('read failed'));r.readAsDataURL(blob);});}
 async function uploadGameArt(file){
   if(MOCK)return 'mock://art/'+genKey(); // demo mode: fake URL
+  if(DRIVE){ // store the art inline as a downscaled data-URL (lives in the Drive file)
+    const {blob,bgColor}=await fileToFitBlob(file,384,0.82);
+    const dataUrl=await blobToDataUrl(blob);
+    if(bgColor)artBgCache[dataUrl]=bgColor;
+    return dataUrl;
+  }
   const uid=account&&account.auth_user_id;
   if(!uid)throw new Error('Not signed in.');
   const {blob,bgColor}=await fileToFitBlob(file,512,0.85);
@@ -2718,7 +2851,6 @@ function wirePersonAdd(selId){
 function openCompSheet(comp){
   const c=comp||{};const editing=!!c.id;
   openSheet(editing?'Edit comp':'New comp',`
-    ${editing?'':'<button class="btn" id="c-scan" style="width:100%;">📷 Scan flyer / mailer</button><input type="file" id="c-scan-file" accept="image/*" capture="environment" style="display:none"><div id="c-scan-status" class="muted" style="font-size:12px;min-height:14px;margin-top:4px;"></div>'}
     <label class="field">Person</label>
     ${personSelect('c-person', c.person||'')}
     <label class="field">Title</label>
@@ -2738,29 +2870,6 @@ function openCompSheet(comp){
     </div>
   `,()=>{
     wirePersonAdd('c-person');wireCasinoAdd('c-casino');
-    // Scan a flyer/mailer photo -> ct-scan-comp -> prefill the fields for review.
-    function prefillComp(cp){
-      if(cp.title)document.getElementById('c-title').value=cp.title;
-      if(cp.casino){const sel=document.getElementById('c-casino');let opt=[...sel.options].find(o=>o.value===cp.casino);if(!opt){opt=new Option(cp.casino,cp.casino);sel.add(opt,[...sel.options].find(o=>o.value==='__addcasino')||null);}sel.value=cp.casino;}
-      if(cp.valid_from)document.getElementById('c-from').value=cp.valid_from;
-      if(cp.valid_to)document.getElementById('c-to').value=cp.valid_to;
-      if(cp.notes)document.getElementById('c-notes').value=cp.notes;
-    }
-    const scanBtn=document.getElementById('c-scan');
-    if(scanBtn){
-      const fi=document.getElementById('c-scan-file'),st=document.getElementById('c-scan-status');
-      scanBtn.addEventListener('click',()=>fi.click());
-      fi.addEventListener('change',async()=>{
-        const f=fi.files&&fi.files[0];if(!f)return;
-        scanBtn.disabled=true;st.style.color='';st.textContent='Reading flyer…';
-        try{const {data,media_type}=await fileToScaledBase64(f);
-          const r=await api('ct-scan-comp',{image:data,media_type,today:state.today,casinos:CASINOS});
-          if(r&&r.ok&&r.comp){prefillComp(r.comp);st.textContent='Filled in — check it, then Save.';}
-          else st.textContent=(r&&r.message)||'Couldn’t read a comp — enter it manually.';
-        }catch(e){st.textContent='Scan failed — enter it manually.';}
-        finally{scanBtn.disabled=false;fi.value='';}
-      });
-    }
     const saveBtn=document.getElementById('c-save');
     saveBtn.addEventListener('click',async()=>{
       if(saveBtn.disabled)return;
@@ -3536,7 +3645,8 @@ function mockBootstrap(today){
 function mockRecompute(s){s.buy_in_total=s.buyins.reduce((x,b)=>x+num(b.amount),0);}
 function mockId(p){return p+Math.random().toString(36).slice(2,8);}
 function mockChallenges(v){return Array.isArray(v)?v.slice(0,50).map(c=>({id:(c&&c.id)||mockId('hc'),text:String((c&&c.text)||'').trim().slice(0,200),done:!!(c&&c.done)})).filter(c=>c.text):[];}
-async function mockApi(name,payload){
+// The local engine — serves both MOCK (ephemeral demo) and DRIVE (persisted to Google Drive).
+async function localApi(name,payload){
   const today=payload.today||todayLocal();
   if(name==='ct-auth'||name==='ct-whoami')return {ok:true,account:mockDB.account,bootstrap:mockBootstrap(today)};
   if(name==='ct-data'){
@@ -3544,11 +3654,8 @@ async function mockApi(name,payload){
     if(payload.view==='stats')return {ok:true,stats:mockStats()};
     return {ok:true,bootstrap:mockBootstrap(today)};
   }
-  if(name==='ct-write'){mockWrite(payload);return {ok:true,bootstrap:mockBootstrap(today)};}
-  if(name==='ct-scan-ticket'){await new Promise(r=>setTimeout(r,600));return {ok:true,amount:123.45,raw:'123.45'};}
-  if(name==='ct-scan-comp'){await new Promise(r=>setTimeout(r,700));const f=new Date(),t=new Date();t.setDate(t.getDate()+34);const iso=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-    return {ok:true,comp:{title:'$20 Bonus Play',casino:'Thunder Valley',valid_from:iso(f),valid_to:iso(t),redemptions:[{frequency:'weekly',dow:[1,2,3,4]},{frequency:'weekend',dow:[5,6,0]}],single_use:true,notes:'Once/week (Mon–Thu) & once/weekend (Fri–Sun) — demo'}};}
-  return {ok:false,message:'mock: unknown '+name};
+  if(name==='ct-write'){mockWrite(payload);if(DRIVE)scheduleDriveSave();return {ok:true,bootstrap:mockBootstrap(today)};}
+  return {ok:false,message:'unknown action '+name};
 }
 function mockWrite(b){
   const find=id=>mockDB.sessions.find(s=>s.id===id);const a=b.action;
@@ -3675,6 +3782,8 @@ if(MOCK){
   document.getElementById('mock-flag').style.display='block';
   mockSeed();
   boot(mockDB.account,mockBootstrap(todayLocal()));
+}else if(DRIVE){
+  startDrive();
 }else{
   // Supabase Auth: react to sign-in / sign-out / password-recovery. supabase-js fires
   // INITIAL_SESSION on load with the persisted session (or null), which drives the
