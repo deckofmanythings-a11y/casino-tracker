@@ -802,7 +802,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.59';
+const APP_VERSION='0.9.60';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -1388,8 +1388,10 @@ async function getToken(interactive){
   if(gAccessToken&&Date.now()<gTokenExp-60000)return gAccessToken;
   if(!gisLoaded())await waitForGis();
   initTokenClient();
+  // prompt:'' = "don't force the consent screen" — a returning user (grant already given) gets a
+  // token with no permission dialog, often instantly; only a first-time user is shown consent.
   return new Promise((resolve,reject)=>{_tokResolve=resolve;_tokReject=reject;
-    try{gTokenClient.requestAccessToken({prompt:interactive?'consent':''});}catch(e){reject(e);}});
+    try{gTokenClient.requestAccessToken({prompt:''});}catch(e){reject(e);}});
 }
 async function driveFetch(url,opts){opts=opts||{};opts.headers=Object.assign({Authorization:'Bearer '+gAccessToken},opts.headers||{});
   let res=await fetch(url,opts);
@@ -1420,14 +1422,20 @@ function normalizeDB(data,acct){const d=(data&&typeof data==='object')?data:{};c
   ['games','trips','sessions','stakes','comps','comp_casinos','hitlist','bet_profiles','household'].forEach(k=>{if(Array.isArray(d[k]))db[k]=d[k];});
   db.sessions.forEach(s=>{s.buyins=s.buyins||[];s.bonuses=s.bonuses||[];});
   db._rev=d._rev||0;return db;}
+function readLocalDB(id){try{return JSON.parse(localStorage.getItem('ct_drive_db_'+id));}catch(_){return null;}}
 async function driveLoadDB(acct){
   try{
     const f=await driveFindFile();
-    if(f){driveFileId=f.id;driveVersion=Number(f.version||0);mockDB=normalizeDB(await driveReadContent(),acct);}
+    if(f){driveFileId=f.id;driveVersion=Number(f.version||0);mockDB=normalizeDB(await driveReadContent(),acct);
+      // Guard against loading STALE Drive data over newer un-synced local writes (e.g. a save that
+      // failed right before a reload). If the local cache is ahead, keep it and push it to Drive.
+      const local=readLocalDB(acct.id);
+      if(local&&(local._rev||0)>(mockDB._rev||0)){mockDB=normalizeDB(local,acct);mockDB._rev=local._rev;scheduleDriveSave();}
+    }
     else{mockDB=emptyDB(acct);await driveCreateFile(serializeDB());}
   }catch(e){ // offline / Drive error — fall back to the last local copy if we have one
-    let cached=null;try{cached=JSON.parse(localStorage.getItem('ct_drive_db_'+acct.id));}catch(_){}
-    if(cached){mockDB=normalizeDB(cached,acct);toast('Offline — showing your last saved data.');}
+    const cached=readLocalDB(acct.id);
+    if(cached){mockDB=normalizeDB(cached,acct);mockDB._rev=cached._rev||0;toast('Offline — showing your last saved data.');}
     else throw e;
   }}
 // Debounced save after every mutation. Also keeps a local copy for offline/instant reloads.
