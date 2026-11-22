@@ -773,6 +773,16 @@
         <select id="set-rollover" class="set-select"></select>
       </div>
     </div>
+    <div id="data-block">
+      <h2 class="set-h">Data &amp; backup</h2>
+      <div id="data-import-row" style="display:none;">
+        <button class="btn" id="data-import-sb" style="width:100%;">⬇️ Import from my old login</button>
+        <div class="set-sub" style="margin:6px 2px 12px;">One-time: copy your existing data from the old email/password account into this Google Drive.</div>
+      </div>
+      <button class="btn" id="data-export" style="width:100%;">Download a backup (.json)</button>
+      <button class="btn" id="data-restore" style="width:100%;margin-top:8px;">Restore from a backup file</button>
+      <input type="file" id="data-file" accept="application/json,.json" style="display:none">
+    </div>
     <div id="signout-row">
       <span class="so-email" id="so-email"></span>
       <button class="btn danger" style="flex:0 0 auto;padding:8px 14px;" id="so-btn">Sign out</button>
@@ -802,7 +812,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.60';
+const APP_VERSION='0.9.61';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -833,10 +843,9 @@ const MOCK=new URLSearchParams(location.search).has('mock');
 // No developer-run server stores user data. When DRIVE is on, the local engine (the former "mock"
 // engine) IS the live engine, persisted to Drive.
 const GOOGLE_CLIENT_ID='745353300003-h73ergl5l5rvqr3ulp7g3elugd36aq2q.apps.googleusercontent.com';
-// During the Supabase→Drive transition, Drive mode is opt-in via ?drive=1 so the live app keeps
-// working on Supabase (with your existing data) until the one-time importer runs. Flip this to
-// `!MOCK && !!GOOGLE_CLIENT_ID` to make Drive the default for everyone.
-const DRIVE=!MOCK && !!GOOGLE_CLIENT_ID && new URLSearchParams(location.search).has('drive');
+// Google Drive is the default backend. `?supabase=1` is a transition-era escape hatch back to the
+// old email/password backend (kept reachable until the Supabase user DB is fully retired).
+const DRIVE=!MOCK && !!GOOGLE_CLIENT_ID && !new URLSearchParams(location.search).has('supabase');
 const DRIVE_SCOPE='openid email profile https://www.googleapis.com/auth/drive.file';
 const DRIVE_FILE_NAME='casino-tracker-data.json';
 
@@ -1489,6 +1498,72 @@ async function driveSignedIn(){
   userEmail=info.email;storeAccount(acct);
   await driveLoadDB(acct);
   boot(acct,mockBootstrap(todayLocal()));
+}
+
+// ── Migration & backup ───────────────────────────────────────────────────────
+// Pull the full dataset from the old Supabase (email/password) account into THIS Drive file.
+// Uses its own throwaway Supabase client so it never touches the Drive sign-in session.
+async function importFromSupabase(email,password){
+  const sbi=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY,{auth:{persistSession:false,autoRefreshToken:false}});
+  const {data,error}=await sbi.auth.signInWithPassword({email:(email||'').trim(),password:password||''});
+  if(error||!data||!data.session)throw new Error((error&&error.message)||'Login failed — check the email and password.');
+  let j;
+  try{
+    const res=await fetch(FUNCTIONS_URL+'/ct-data',{method:'POST',
+      headers:{'Content-Type':'application/json','apikey':SUPABASE_ANON_KEY,'Authorization':'Bearer '+data.session.access_token},
+      body:JSON.stringify({view:'export',today:todayLocal()})});
+    j=await res.json();
+  }finally{try{await sbi.auth.signOut();}catch(_){}}
+  if(!j||!j.ok||!j.export)throw new Error((j&&j.message)||'Couldn’t read your old data.');
+  return j.export;
+}
+// Union-by-id merge of an exported/backup dataset into mockDB (never overwrites existing rows).
+function mergeImport(src){
+  const exp=(src&&src.export)?src.export:src;if(!exp||typeof exp!=='object')throw new Error('Not a valid backup.');
+  let added=0;
+  ['games','trips','sessions','stakes','comps','comp_casinos','hitlist','bet_profiles','household'].forEach(k=>{
+    const cur=mockDB[k]||(mockDB[k]=[]);const ids=new Set(cur.map(x=>x&&x.id));
+    (Array.isArray(exp[k])?exp[k]:[]).forEach(row=>{if(row&&row.id&&!ids.has(row.id)){cur.push(row);ids.add(row.id);added++;}});
+  });
+  (mockDB.sessions||[]).forEach(s=>{s.buyins=s.buyins||[];s.bonuses=s.bonuses||[];});
+  return added;
+}
+async function persistNow(){if(DRIVE){driveDirty=true;try{localStorage.setItem('ct_drive_db_'+(account&&account.id),JSON.stringify(mockDB));}catch(_){}await flushDriveSave();}}
+function downloadBackup(){
+  try{const blob=new Blob([JSON.stringify(mockDB||{})],{type:'application/json'});
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='casino-tracker-backup-'+todayLocal()+'.json';
+    document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),3000);
+  }catch(e){toast('Couldn’t create the backup file.');}
+}
+async function restoreFromFile(file){
+  try{const data=JSON.parse(await file.text());const n=mergeImport(data);await persistNow();reloadFromLocalDB();
+    toast(n?('Restored '+n+' new records.'):'Nothing new to restore — already up to date.');}
+  catch(e){toast((e&&e.message)||'That file couldn’t be read as a backup.');}
+}
+function openImportSheet(){
+  openSheet('Import your old data',`
+    <div class="muted" style="font-size:12.5px;margin-bottom:12px;line-height:1.5;">One-time move. Sign in with the email &amp; password from your old Casino Tracker account — everything there is copied into your Google Drive. Your old account isn’t changed, and this won’t duplicate anything you import twice.</div>
+    <label class="field">Old account email</label>
+    <input id="imp-email" type="email" inputmode="email" autocomplete="off" placeholder="you@example.com">
+    <label class="field">Password</label>
+    <input id="imp-pw" type="password" autocomplete="off" placeholder="••••••••">
+    <div class="auth-err" id="imp-err" style="min-height:16px;margin-top:6px;"></div>
+    <div class="sheet-actions"><button class="btn" data-close-sheet>Cancel</button>
+      <button class="btn primary" id="imp-go">Import</button></div>
+  `,()=>{
+    const go=document.getElementById('imp-go'),err=document.getElementById('imp-err');
+    go.addEventListener('click',async()=>{
+      const email=document.getElementById('imp-email').value.trim(),pw=document.getElementById('imp-pw').value;
+      if(!email||!pw){err.style.color='var(--loss)';err.textContent='Enter your old email and password.';return;}
+      go.disabled=true;go.textContent='Importing…';err.style.color='var(--muted)';err.textContent='Signing in…';
+      try{
+        const exp=await importFromSupabase(email,pw);
+        const n=mergeImport(exp);
+        await persistNow();reloadFromLocalDB();
+        closeSheet();toast(n?('Imported '+n+' records from your old account.'):'Already imported — nothing new.');
+      }catch(e){go.disabled=false;go.textContent='Import';err.style.color='var(--loss)';err.textContent=(e&&e.message)||'Import failed.';}
+    });
+  });
 }
 
 // ── Auth (Supabase email/password) ─────────────────────────────────────────
@@ -3014,6 +3089,13 @@ function renderSettings(){
     rsel.innerHTML=Array.from({length:12},(_,h)=>`<option value="${h}"${h===cur?' selected':''}>${rolloverLabel(h)}</option>`).join('');
     if(!rsel._bound){rsel._bound=1;rsel.addEventListener('change',()=>setRolloverHour(parseInt(rsel.value,10)));}
   }
+  // Data & backup. "Import from old login" only makes sense in Drive mode (migrating off Supabase).
+  const impRow=document.getElementById('data-import-row');if(impRow)impRow.style.display=DRIVE?'block':'none';
+  const impBtn=document.getElementById('data-import-sb');if(impBtn&&!impBtn._bound){impBtn._bound=1;impBtn.addEventListener('click',openImportSheet);}
+  const expBtn=document.getElementById('data-export');if(expBtn&&!expBtn._bound){expBtn._bound=1;expBtn.addEventListener('click',downloadBackup);}
+  const resBtn=document.getElementById('data-restore'),resFile=document.getElementById('data-file');
+  if(resBtn&&!resBtn._bound){resBtn._bound=1;resBtn.addEventListener('click',()=>resFile.click());
+    resFile.addEventListener('change',()=>{const f=resFile.files&&resFile.files[0];if(f)restoreFromFile(f);resFile.value='';});}
   renderHousehold();
 }
 function renderHousehold(){
