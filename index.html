@@ -752,7 +752,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.55';
+const APP_VERSION='0.9.56';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -1980,7 +1980,10 @@ function openBuyinSheet(sessionId){
 // ── Add bonus (the headline feature) ─────────────────────────────────────────
 function openBonusSheet(sessionId){
   const s=findSession(sessionId);
-  const baseBet=s?.bet_size??'';
+  // Pre-fill the base bet: the session's own bet size if set, else the CURRENT Attack Ladder rung's
+  // bet — so a bonus logged mid-attack already knows what you're betting without re-typing it.
+  let baseBet=(s&&s.bet_size!=null&&s.bet_size!=='')?s.bet_size:'';
+  if(baseBet===''&&s){try{const r=ladderTable(s)[ladderState(s).rung];if(r&&r.bet)baseBet=r.bet;}catch(_){}}
   openSheet('Log a bonus',`
     <label class="field">Bonus / win amount</label>
     <div class="money-input"><span class="dollar">$</span><input id="bo-amt" inputmode="decimal" placeholder="250"></div>
@@ -3326,7 +3329,7 @@ function openBetTableBuilder(profile){
     return `<div class="bt-tier"><div class="bt-tier-h"><span>Denominations</span><button type="button" class="bt-tier-x" data-tier-rm aria-label="Remove group">✕</button></div>
       <div class="bt-denoms">${chips}</div>
       <label class="field" style="margin-top:8px;">Bet levels for these denoms (credits)</label>
-      <input class="bt-levels" inputmode="numeric" placeholder="75 150 225 375 750" value="${esc(levels)}"></div>`;};
+      <input class="bt-levels" inputmode="text" placeholder="75 150 225 375 750 (space or comma)" value="${esc(levels)}"></div>`;};
   const startTiers=(profile&&profile.tiers&&profile.tiers.length)?profile.tiers:[{denoms:[],levels:[]}];
   openSheet(profile&&profile.id?'Edit bet table':'New bet table',`
     <div class="muted" style="font-size:12px;margin-bottom:8px;">Enter a machine's bet menu — the denominations and the credit bet levels you can pick. The ladder rebuilds to the closest bet on this machine and keeps rungs distinct wherever the menu allows.</div>
