@@ -12,8 +12,11 @@ as the first user. Part 2 (verification) runs in the background and doesn't bloc
 ## Part 1 — Create the project + Client ID  (do this now)
 
 ### 1. Create a project
-1. Go to <https://console.cloud.google.com/>.
-2. Top bar → project dropdown → **New Project**. Name it `casino-tracker`. Create, then select it.
+1. Easiest: go straight to <https://console.cloud.google.com/projectcreate>, name it `casino-tracker`,
+   click **Create**, then make sure it's selected.
+2. (Or via the UI: in the **top bar**, click the **project dropdown** next to the "Google Cloud" logo
+   — the one showing your current project name — then **New Project** at the top-right of that dialog.
+   Note: this is the top-bar project picker, *not* the left-hand product/navigation menu.)
 
 ### 2. Enable the Drive API
 1. Left menu → **APIs & Services → Library**.
