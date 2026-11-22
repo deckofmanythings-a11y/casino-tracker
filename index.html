@@ -31,15 +31,21 @@
     body.in-discord{--top-inset:calc(env(safe-area-inset-top,0px) + 52px);}
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html{height:100%;}
+  /* App shell: body is a fixed-height flex column. #app scrolls INTERNALLY and #nav is a flex
+     footer — so the bottom nav is part of the layout and always sits at the bottom (no fixed-
+     position jitter on mobile when the browser toolbar shows/hides), and a sticky header can
+     pin to the top of the scrolling #app. */
   body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
-    background:var(--bg);color:var(--text);min-height:100vh;
+    background:var(--bg);color:var(--text);height:100%;overflow:hidden;display:flex;flex-direction:column;
     -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;}
   #auth-status{display:none;padding:calc(60px + var(--top-inset)) 24px 60px;text-align:center;font-size:14px;color:var(--muted);}
   #auth-status.show{display:block;}
   #auth-debug{font-size:11px;color:var(--faint);margin-top:10px;word-break:break-word;font-family:monospace;}
-  #app{display:none;max-width:520px;margin:0 auto;padding:calc(var(--top-inset) + 40px) 14px calc(88px + var(--safe-bottom));}
+  #app{display:none;flex:1 1 auto;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;
+    width:100%;max-width:520px;margin:0 auto;padding:calc(var(--top-inset) + 10px) 14px 24px;}
   #app.show{display:block;}
-  .screen{display:none;padding-top:14px;}
+  .screen{display:none;padding-top:4px;}
   .screen.show{display:block;}
   h1,h2,h3{margin:0;}
   .section-label{font-size:12px;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted);margin:20px 2px 8px;}
@@ -64,8 +70,14 @@
   .card{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:14px;box-shadow:var(--shadow);}
 
   /* ── Day header ─────────────────────────────────────────── */
-  .day-header{display:flex;flex-direction:column;align-items:center;text-align:center;padding:18px 14px 15px;
-    background:var(--panel);border:1px solid var(--border);border-radius:16px;}
+  /* Sticky at the top of the scrolling #app so the day P&L is always visible on Today. */
+  .day-header{position:sticky;top:0;z-index:30;display:flex;flex-direction:column;align-items:center;text-align:center;
+    padding:14px 44px 12px;margin-top:4px;
+    background:var(--panel);border:1px solid var(--border);border-radius:16px;box-shadow:0 8px 16px -10px rgba(0,0,0,.55);}
+  .day-gear{position:absolute;top:8px;right:8px;width:34px;height:34px;display:flex;align-items:center;justify-content:center;
+    border-radius:10px;border:1px solid var(--border);background:var(--panel2);color:var(--muted);cursor:pointer;padding:0;}
+  .day-gear svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.7;}
+  .day-gear:active{transform:scale(.94);}
   .day-date{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1.4px;font-weight:600;}
   .day-net{font-size:42px;font-weight:800;line-height:1.02;margin:5px 0 5px;letter-spacing:-1.4px;}
   .day-sub{display:flex;gap:16px;font-size:13px;color:var(--muted);flex-wrap:wrap;justify-content:center;}
@@ -85,11 +97,11 @@
      their own wrapping grid inside it. */
   .fast-select{display:block;}
   .fast-chip{min-width:0;overflow:hidden;background:var(--panel);border:1px solid var(--border);
-    border-radius:14px;padding:11px 13px;cursor:pointer;transition:transform .06s,border-color .15s;}
+    border-radius:12px;padding:9px 9px;cursor:pointer;transition:transform .06s,border-color .15s;}
   .fast-chip:active{transform:scale(.96);}
   .fast-chip.core-open{border-color:var(--gold);box-shadow:0 0 0 1px var(--gold);}
-  .fast-chip .fc-name{font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-  .fast-chip .fc-sub{font-size:11px;color:var(--muted);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .fast-chip .fc-name{font-size:12.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .fast-chip .fc-sub{font-size:10px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .fast-chip .fc-cat{font-size:15px;}
   .fast-chip.new{display:flex;align-items:center;justify-content:center;border-style:dashed;
     color:var(--gold);font-weight:700;font-size:14px;min-height:100%;}
@@ -105,15 +117,21 @@
   .cat-tile .cti{font-size:23px;line-height:1;}
   .cat-tile .ctl{font-size:11px;font-weight:700;line-height:1.15;text-align:center;}
   .cat-tile .ctc{position:absolute;top:5px;right:8px;font-size:10px;font-weight:800;color:var(--muted);}
-  .cat-games{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:9px;padding:10px 2px 4px;}
+  .cat-games{display:grid;grid-template-columns:repeat(auto-fill,minmax(78px,1fr));gap:7px;padding:10px 2px 4px;}
   .cat-games:empty{padding:0;}
   .cat-games .fast-chip{animation:tileIn .3s ease both;}
   @keyframes tileIn{from{opacity:0;transform:translateY(9px) scale(.93);}to{opacity:1;transform:none;}}
   @media (prefers-reduced-motion:reduce){.cat-games .fast-chip{animation:none;}}
   /* Art tiles: image is shrunk to fit (not cropped); a bottom scrim keeps the name legible. */
-  .fast-chip.has-art{position:relative;padding:0;min-height:96px;border-color:var(--border);
+  .fast-chip.has-art{position:relative;padding:0;min-height:76px;border-color:var(--border);
     background-size:contain;background-repeat:no-repeat;background-position:center;
     background-color:#0a0e0c;color:#fff;}
+  /* Art tile with the name hidden: pure art, no scrim/text (keeps a core's variant count only). */
+  .fast-chip.has-art.noname .fc-scrim,.fast-chip.has-art.noname .fc-text{display:none;}
+  .fast-chip.has-art.noname.hascount .fc-scrim{display:block;background:linear-gradient(180deg,rgba(0,0,0,0) 45%,rgba(0,0,0,.8));}
+  .fast-chip.has-art.noname.hascount .fc-text{display:block;}
+  .fast-chip.noname-plain{display:flex;align-items:center;justify-content:center;min-height:56px;}
+  .fast-chip.noname-plain .fc-cat{font-size:24px;}
   .fast-chip.has-art .fc-scrim{position:absolute;inset:0;border-radius:13px;
     background:linear-gradient(180deg,rgba(0,0,0,.05) 40%,rgba(0,0,0,.82));}
   .fast-chip.has-art .fc-text{position:absolute;left:0;right:0;bottom:0;padding:8px 10px;}
@@ -284,6 +302,14 @@
   .gr-ctrls .icon-btn{width:30px;height:30px;font-size:12px;}
   .gr-ctrls .icon-btn:disabled{opacity:.28;}
   .reorder-hint{font-size:11px;color:var(--faint);margin:2px 2px 6px;}
+  /* Household rows (Settings) */
+  .hh-row{display:flex;align-items:center;gap:8px;background:var(--panel);border:1px solid var(--border);
+    border-radius:13px;padding:10px 12px;margin-top:8px;}
+  .hh-name{flex:1;min-width:0;font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .hh-ctrls{display:flex;gap:5px;flex:0 0 auto;}
+  .hh-ctrls .icon-btn{width:30px;height:30px;font-size:12px;}
+  .hh-ctrls .icon-btn:disabled{opacity:.28;}
+  #household-block{margin-top:4px;}
 
   .empty{text-align:center;color:var(--faint);font-size:13px;padding:26px 10px;}
 
@@ -370,7 +396,7 @@
   .sheet-actions{display:flex;gap:10px;margin-top:20px;}
 
   /* ── Bottom nav ─────────────────────────────────────────── */
-  #nav{position:fixed;left:0;right:0;bottom:0;z-index:50;display:flex;justify-content:center;
+  #nav{flex:0 0 auto;z-index:50;display:flex;justify-content:center;
     background:rgba(13,20,17,.92);backdrop-filter:blur(12px);border-top:1px solid var(--border);
     padding-bottom:var(--safe-bottom);}
   #nav .nav-inner{display:flex;width:100%;max-width:520px;}
@@ -394,7 +420,7 @@
   #reload-pill b{display:block;font-size:13px;margin-bottom:1px;}
 
   /* ── Auth screen ────────────────────────────────────────── */
-  #auth-screen{display:none;min-height:100vh;align-items:center;justify-content:center;padding:24px;}
+  #auth-screen{display:none;flex:1 1 auto;min-height:0;overflow-y:auto;align-items:center;justify-content:center;padding:24px;}
   #auth-screen.show{display:flex;}
   .auth-card{width:100%;max-width:360px;background:var(--panel);border:1px solid var(--border);
     border-radius:18px;padding:24px 20px;box-shadow:var(--shadow);}
@@ -668,6 +694,7 @@
   <!-- ── TODAY ─────────────────────────────────────────────── -->
   <div id="screen-today" class="screen">
     <div class="day-header">
+      <button class="day-gear" data-open-settings aria-label="Settings"><svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.1"/><path d="M19.4 13a7.9 7.9 0 0 0 0-2l2-1.5-2-3.4-2.3 1a7.6 7.6 0 0 0-1.7-1l-.3-2.5H9.9l-.3 2.5a7.6 7.6 0 0 0-1.7 1l-2.3-1-2 3.4L3.6 11a7.9 7.9 0 0 0 0 2l-2 1.5 2 3.4 2.3-1a7.6 7.6 0 0 0 1.7 1l.3 2.5h4.2l.3-2.5a7.6 7.6 0 0 0 1.7-1l2.3 1 2-3.4z"/></svg></button>
       <div class="day-date" id="day-date"></div>
       <div class="day-net" id="day-net">$0</div>
       <div class="day-sub" id="day-sub"></div>
@@ -709,8 +736,25 @@
     <div id="games-body"></div>
     <button class="btn primary btn-lg" style="margin-top:14px;" data-add-game>+ Add a game</button>
     <button class="btn btn-lg" style="margin-top:8px;" data-bet-tables>⚔️ Bet tables (Attack Ladder)</button>
+  </div>
+
+  <!-- ── HIT LIST ──────────────────────────────────────────── -->
+  <div id="screen-hitlist" class="screen">
+    <h1 style="font-size:22px;margin:6px 2px 10px;">Hit List</h1>
+    <div id="hitlist-body"></div>
+  </div>
+
+  <!-- ── SETTINGS ──────────────────────────────────────────── -->
+  <div id="screen-settings" class="screen">
+    <h1 style="font-size:22px;margin:6px 2px 4px;">Settings</h1>
+    <div id="household-block">
+      <h2 class="set-h">Household</h2>
+      <div class="set-sub" style="margin:-4px 2px 10px;">The people you track comps for. These become the choices in the Comps “Person” dropdown.</div>
+      <div id="household-list"></div>
+      <button class="btn" id="hh-add" style="width:100%;margin-top:8px;">+ Add a person</button>
+    </div>
     <div id="settings-block">
-      <h2 class="set-h">Settings</h2>
+      <h2 class="set-h">Preferences</h2>
       <div class="set-row">
         <div class="set-label"><label for="set-rollover">New day starts at</label>
           <div class="set-sub">Play before this time counts toward the previous day, so a night that runs past midnight stays on one day.</div></div>
@@ -721,12 +765,6 @@
       <span class="so-email" id="so-email"></span>
       <button class="btn danger" style="flex:0 0 auto;padding:8px 14px;" id="so-btn">Sign out</button>
     </div>
-  </div>
-
-  <!-- ── HIT LIST ──────────────────────────────────────────── -->
-  <div id="screen-hitlist" class="screen">
-    <h1 style="font-size:22px;margin:6px 2px 10px;">Hit List</h1>
-    <div id="hitlist-body"></div>
   </div>
 </div>
 
@@ -752,7 +790,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.56';
+const APP_VERSION='0.9.57';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -802,7 +840,7 @@ function readCache(){try{const s=localStorage.getItem(CACHE_KEY);return s?JSON.p
 let account=null;
 let userEmail=null;
 let booted=false;
-let state={today:todayLocal(),games:[],active_trip:null,active_trip_totals:null,sessions:[],carryover_open:[],stakes:[],comps:[],comp_casinos:[],recent_games:[],hitlist:[]};
+let state={today:todayLocal(),games:[],active_trip:null,active_trip_totals:null,sessions:[],carryover_open:[],stakes:[],comps:[],comp_casinos:[],recent_games:[],hitlist:[],bet_profiles:[],household:[]};
 let currentTab='today';
 let lastJackpots=[];
 let statsData=null;
@@ -1388,7 +1426,7 @@ async function doSignOut(){
   try{await sb.auth.signOut();}catch(_){}
   try{localStorage.removeItem(CACHE_KEY);}catch(_){}
   account=null;booted=false;userEmail=null;
-  state={today:todayLocal(),games:[],active_trip:null,active_trip_totals:null,sessions:[],carryover_open:[],stakes:[],comps:[],comp_casinos:[],recent_games:[],hitlist:[]};
+  state={today:todayLocal(),games:[],active_trip:null,active_trip_totals:null,sessions:[],carryover_open:[],stakes:[],comps:[],comp_casinos:[],recent_games:[],hitlist:[],bet_profiles:[],household:[]};
   $('app').classList.remove('show');
   showAuthScreen('login');
 }
@@ -1421,7 +1459,7 @@ function setTab(tab){
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('show'));
   document.getElementById('screen-'+tab).classList.add('show');
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.toggle('sel',b.dataset.tab===tab));
-  window.scrollTo(0,0);
+  const appEl=document.getElementById('app');if(appEl)appEl.scrollTo(0,0);
   if(tab==='today')renderToday();
   if(tab==='history')loadHistory();
   if(tab==='stats')loadStats();
@@ -1429,8 +1467,10 @@ function setTab(tab){
   if(tab==='comps')renderComps();
   if(tab==='games')renderGames();
   if(tab==='hitlist')renderHitlist();
+  if(tab==='settings')renderSettings();
 }
 document.querySelectorAll('.nav-btn').forEach(b=>b.addEventListener('click',()=>setTab(b.dataset.tab)));
+document.addEventListener('click',e=>{if(e.target.closest('[data-open-settings]'))setTab('settings');});
 
 // ── Today ──────────────────────────────────────────────────────────────────
 // asVariant: rendered as one of a core's expanded variants — show the VARIANT name as the
@@ -1438,6 +1478,7 @@ document.querySelectorAll('.nav-btn').forEach(b=>b.addEventListener('click',()=>
 // if none). Normal (favorite/standalone) tiles show the game name with the variant as sub.
 function favChip(g,asVariant){
   const art=g.image_url&&g.image_url.indexOf('mock://')!==0;
+  const hide=!!g.hide_name; // "Hide name on tile" — art-only (a standalone game has no variant count)
   const name=(asVariant&&g.variant)?g.variant:g.name;
   const sub=asVariant
     ?(g.variant_note?esc(g.variant_note):'')
@@ -1448,10 +1489,12 @@ function favChip(g,asVariant){
     const attrs=g.art_bg
       ?`style="background-image:url(&quot;${g.image_url}&quot;);background-color:${esc(g.art_bg)};"`
       :`data-arturl="${esc(g.image_url)}" style="background-image:url(&quot;${g.image_url}&quot;)"`;
+    if(hide)return `<div class="fast-chip has-art noname" data-game="${g.id}" ${attrs}></div>`;
     return `<div class="fast-chip has-art" data-game="${g.id}" ${attrs}>
       <div class="fc-scrim"></div>
       <div class="fc-text"><div class="fc-name">${esc(name)}</div>${subHtml}</div></div>`;
   }
+  if(hide)return `<div class="fast-chip noname-plain" data-game="${g.id}"><div class="fc-cat">${catIcon(g.category)}</div></div>`;
   return `<div class="fast-chip" data-game="${g.id}">
     <div class="fc-cat">${catIcon(g.category)}</div>
     <div class="fc-name">${esc(name)}</div>
@@ -1464,17 +1507,19 @@ function groupByCore(gs){const m={},order=[];
 // A collapsed "core" tile standing in for a game that has multiple variants; tap expands them.
 function coreChip(core,items,rep,open){
   const n=items.length,sub=`${n} variants ${open?'▴':'▾'}`;
+  const hide=!!rep.hide_name; // hide the core NAME but keep the variant count
+  const nameHtml=hide?'':`<div class="fc-name">${esc(core)}</div>`;
   const art=rep.image_url&&rep.image_url.indexOf('mock://')!==0;
   if(art){
     const attrs=rep.art_bg?`style="background-image:url(&quot;${rep.image_url}&quot;);background-color:${esc(rep.art_bg)};"`
       :`data-arturl="${esc(rep.image_url)}" style="background-image:url(&quot;${rep.image_url}&quot;)"`;
-    return `<div class="fast-chip has-art${open?' core-open':''}" data-core="${esc(core)}" ${attrs}>
+    return `<div class="fast-chip has-art${open?' core-open':''}${hide?' noname hascount':''}" data-core="${esc(core)}" ${attrs}>
       <div class="fc-scrim"></div>
-      <div class="fc-text"><div class="fc-name">${esc(core)}</div><div class="fc-sub">${sub}</div></div></div>`;
+      <div class="fc-text">${nameHtml}<div class="fc-sub">${sub}</div></div></div>`;
   }
   return `<div class="fast-chip${open?' core-open':''}" data-core="${esc(core)}">
     <div class="fc-cat">${catIcon(rep.category)}</div>
-    <div class="fc-name">${esc(core)}</div>
+    ${nameHtml}
     <div class="fc-sub">${sub}</div></div>`;
 }
 // Render a game list as minimal tiles: one tile per core game; a core with >1 variants collapses
@@ -2433,41 +2478,18 @@ function compAmount(c){
   return m?num(m[1]):0;
 }
 function compWeekday(dateStr){const [y,m,d]=dateStr.split('-').map(Number);return new Date(y,m-1,d).getDay();}
+// A comp is a plain dated offer: available on any day within its [valid_from, valid_to] window.
 function compAvailable(comp,dateStr){
   if(comp.valid_from && dateStr<comp.valid_from) return false;
   if(comp.valid_to && dateStr>comp.valid_to) return false;
-  if(comp.dow && comp.dow.length && !comp.dow.includes(compWeekday(dateStr))) return false;
-  if(comp.single_use && comp.used) return false;
-  if(!comp.single_use && (comp.used_dates||[]).includes(dateStr)) return false;
   return true;
 }
-function compEligLabel(comp){ // short human summary, e.g. "Tuesdays", "Sep 20–26", "One-time", "Any day"
-  const dowNames=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-  const parts=[];
-  if(comp.dow&&comp.dow.length) parts.push(comp.dow.slice().sort((a,b)=>a-b).map(d=>dowNames[d]).join(', '));
-  if(comp.valid_from||comp.valid_to){const f=comp.valid_from?prettyDate(comp.valid_from):'…';const t=comp.valid_to?prettyDate(comp.valid_to):'…';parts.push(comp.valid_from===comp.valid_to?prettyDate(comp.valid_from):`${f} – ${t}`);}
-  if(comp.single_use) parts.push('one-time');
-  return parts.join(' · ')||'Any day';
+function compEligLabel(comp){ // short human summary, e.g. "Sep 20–26", "Until Oct 3", "Any day"
+  if(comp.valid_from||comp.valid_to){const f=comp.valid_from?prettyDate(comp.valid_from):'…';const t=comp.valid_to?prettyDate(comp.valid_to):'…';
+    return comp.valid_from===comp.valid_to?prettyDate(comp.valid_from):`${f} – ${t}`;}
+  return 'Any day';
 }
-// Expand a recurring offer into one SINGLE-USE comp per period (a calendar week, or a
-// Fri–Sun weekend) within [from,to], eligible on the given weekdays. Each period is its
-// own one-time comp, consumed independently.
 function isoDate(dt){return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;}
-function periodKey(dt,freq){const wd=dt.getDay();const d=new Date(dt);
-  // weekend -> roll back to Friday; weekly -> roll back to Sunday (the week starts Sunday, so a
-  // Sun–Fri offer is ONE period: using it Sunday consumes it for that whole week).
-  const back=freq==='weekend'?(wd===5?0:wd===6?1:wd===0?2:0):wd;
-  d.setDate(d.getDate()-back);return isoDate(d);}
-function expandComps(base,freq,dowSet,from,to){
-  if(!from||!to)return [];
-  const dset=(dowSet&&dowSet.length)?dowSet:(freq==='weekend'?[5,6,0]:[1,2,3,4]);
-  const groups={};let d=new Date(from+'T00:00:00');const end=new Date(to+'T00:00:00');
-  while(d<=end){const wd=d.getDay();
-    if(dset.includes(wd)){const k=periodKey(d,freq);const ds=isoDate(d);
-      if(!groups[k])groups[k]={min:ds,max:ds};else{if(ds<groups[k].min)groups[k].min=ds;if(ds>groups[k].max)groups[k].max=ds;}}
-    d.setDate(d.getDate()+1);}
-  return Object.keys(groups).sort().map(k=>({...base,single_use:true,valid_from:groups[k].min,valid_to:groups[k].max,dow:dset}));
-}
 // Distinct comp persons, "Me" surfaced first.
 function compPersons(list){
   const seen=[];(list||state.comps||[]).forEach(c=>{const p=c.person||'—';if(!seen.includes(p))seen.push(p);});
@@ -2478,32 +2500,18 @@ function addDays(dateStr,n){const [y,m,d]=dateStr.split('-').map(Number);const d
 // Sort key for the Comps list: the soonest date the comp is available (today or later).
 // Used-up single-use comps and fully-past ones sink to the bottom ('~…' sorts after dates).
 function compNextDate(comp){
-  if(comp.single_use&&comp.used) return '~2';
   const today=state.today;
-  let d=(comp.valid_from&&comp.valid_from>today)?comp.valid_from:today;
-  const end=comp.valid_to||addDays(d,370);
-  for(let i=0;i<420&&d<=end;i++){ if(compAvailable(comp,d)) return d; d=addDays(d,1); }
-  return '~1'+(comp.valid_to||comp.valid_from||'');
+  if(compAvailable(comp,today)) return today;
+  if(comp.valid_from&&comp.valid_from>today) return comp.valid_from;
+  return '~1'+(comp.valid_to||comp.valid_from||''); // fully past -> sinks to the bottom
 }
-// Last day the comp is still eligible (within its window); null = open-ended or done.
-function compLastDate(comp){
-  if(comp.single_use&&comp.used) return null;
-  if(!comp.valid_to) return null;
-  const from=comp.valid_from||comp.valid_to;let d=comp.valid_to;
-  for(let i=0;i<500&&d>=from;i++){const wd=compWeekday(d);if(!comp.dow||!comp.dow.length||comp.dow.includes(wd))return d;d=addDays(d,-1);}
-  return null;
-}
-// Was the comp ever available on a day before today?
-function compHadPast(comp){
-  const today=state.today;if(!comp.valid_from)return true;if(comp.valid_from>=today)return false;
-  let d=comp.valid_from;const end=addDays(today,-1);
-  for(let i=0;i<500&&d<=end;i++){const wd=compWeekday(d);if(!comp.dow||!comp.dow.length||comp.dow.includes(wd))return true;d=addDays(d,1);}
-  return false;
-}
-// Status badge for a comp row: Today only / Expires today / Expires soon / Today / Used / Expired.
+// Last day the comp is still eligible (its window end); null = open-ended.
+function compLastDate(comp){ return comp.valid_to||null; }
+// Was the comp ever available on a day before today? (open-ended = yes)
+function compHadPast(comp){ return !comp.valid_from || comp.valid_from<state.today; }
+// Status badge for a comp row: Today only / Expires today / Expires soon / Today / Expired.
 function compStatus(comp){
   const today=state.today,SOON=7;
-  if(comp.single_use&&comp.used) return {label:'Used',cls:'done'};
   const availToday=compAvailable(comp,today),last=compLastDate(comp),next=compNextDate(comp);
   const hasFuture=/^\d{4}-/.test(next)&&next>today;
   const daysTo=d=>{const a=today.split('-').map(Number),b=d.split('-').map(Number);return Math.round((Date.UTC(b[0],b[1]-1,b[2])-Date.UTC(a[0],a[1]-1,a[2]))/86400000);};
@@ -2516,9 +2524,8 @@ function compStatus(comp){
   if(last&&last<today) return {label:'Expired',cls:'done'};
   return {label:'',cls:''};
 }
-// A comp that's done with: used up, or fully past (nothing available today or ahead).
+// A comp that's done with: fully past (nothing available today or ahead).
 function compDone(comp){
-  if(comp.single_use&&comp.used) return true;
   if(compAvailable(comp,state.today)) return false;
   const next=compNextDate(comp);
   return !(/^\d{4}-/.test(next)&&next>state.today);
@@ -2557,7 +2564,7 @@ function renderComps(){
     html+= active.length ? byPerson(active)
       : `<div class="empty">No active comps${done.length?' — only used or expired ones remain.':'.'}</div>`;
     if(done.length){
-      html+=`<button class="btn" data-comp-donetoggle style="margin-top:14px;width:100%;font-size:12px;">${showDoneComps?'Hide':'Show'} ${done.length} used / expired</button>`;
+      html+=`<button class="btn" data-comp-donetoggle style="margin-top:14px;width:100%;font-size:12px;">${showDoneComps?'Hide':'Show'} ${done.length} expired</button>`;
       if(showDoneComps) html+=`<div style="opacity:.6;">${byPerson(done)}</div>`;
     }
   }
@@ -2685,31 +2692,43 @@ function compRowHtml(c){
     <div>${st}</div>
   </div>`;
 }
+// Person dropdown = the household (Settings), plus the comp's own person if it was since removed,
+// plus an "add a person" shortcut. wirePersonAdd handles the sentinel.
+function personSelect(id,selected){
+  const names=householdNames().slice();
+  let sel=selected||names[0]||'Me';
+  if(sel&&!names.includes(sel))names.unshift(sel);
+  return `<select id="${id}">`+names.map(n=>`<option value="${esc(n)}"${n===sel?' selected':''}>${esc(n)}</option>`).join('')
+    +`<option value="__addperson">➕ Add a person…</option></select>`;
+}
+function wirePersonAdd(selId){
+  const sel=document.getElementById(selId);if(!sel)return;let prev=sel.value;
+  sel.addEventListener('change',async()=>{
+    if(sel.value!=='__addperson'){prev=sel.value;return;}
+    const name=await promptDialog({title:'Add a person',placeholder:'Name',confirmLabel:'Add'});
+    if(!name){sel.value=prev;return;}
+    const r=await api('ct-write',{action:'household-add',name});
+    if(r&&r.ok){applyBootstrap(r.bootstrap);cacheState();
+      const names=householdNames().slice();if(!names.includes(name))names.push(name);
+      sel.innerHTML=names.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join('')+`<option value="__addperson">➕ Add a person…</option>`;
+      sel.value=name;prev=name;
+    }else{toast((r&&r.error)||'Couldn’t add.');sel.value=prev;}
+  });
+}
 function openCompSheet(comp){
   const c=comp||{};const editing=!!c.id;
-  const people=['Me','Wife','Son'];
-  (state.comps||[]).forEach(x=>{if(x.person&&!people.includes(x.person))people.push(x.person);});
-  const dowSel=Array.isArray(c.dow)?c.dow:[];
-  const dowLetters=['S','M','T','W','T','F','S'];
   openSheet(editing?'Edit comp':'New comp',`
     ${editing?'':'<button class="btn" id="c-scan" style="width:100%;">📷 Scan flyer / mailer</button><input type="file" id="c-scan-file" accept="image/*" capture="environment" style="display:none"><div id="c-scan-status" class="muted" style="font-size:12px;min-height:14px;margin-top:4px;"></div>'}
     <label class="field">Person</label>
-    <input id="c-person" list="dl-people" autocomplete="off" value="${esc(c.person||'Me')}">
-    <datalist id="dl-people">${people.map(p=>`<option value="${esc(p)}"></option>`).join('')}</datalist>
+    ${personSelect('c-person', c.person||'')}
     <label class="field">Title</label>
     <input id="c-title" placeholder="e.g. $50 Free Play" value="${esc(c.title||'')}">
     <label class="field">Casino</label>
     ${casinoSelect('c-casino', c.casino||'')}
-    ${editing?`<div class="toggle-row"><div class="tr-label">Single use (consumed when redeemed)</div><div class="switch${c.single_use?' on':''}" id="c-single"></div></div>`:`<label class="field">Redeem</label>
-    <div class="seg" id="c-freq"><button type="button" class="sel" data-freq="once">One-time</button><button type="button" data-freq="weekly">Once / week</button><button type="button" data-freq="weekend">Once / weekend</button></div>
-    <div class="toggle-row" id="c-single-row"><div class="tr-label">Single use (consumed when redeemed)</div><div class="switch${c.single_use?' on':''}" id="c-single"></div></div>
-    <div id="c-freq-hint" class="muted" style="font-size:11px;display:none;margin-top:4px;">Creates one single-use comp per period in the date range.</div>`}
     <div class="row2">
       <div><label class="field">Valid from</label><input type="date" id="c-from" value="${esc(c.valid_from||'')}"></div>
       <div><label class="field">Valid to</label><input type="date" id="c-to" value="${esc(c.valid_to||'')}"></div>
     </div>
-    <label class="field">Weekdays (leave blank for any day)</label>
-    <div class="dow-row" id="c-dow">${dowLetters.map((L,i)=>`<div class="dow-btn${dowSel.includes(i)?' sel':''}" data-dow="${i}">${L}</div>`).join('')}</div>
     <label class="field">Notes</label>
     <textarea id="c-notes" placeholder="Anything worth remembering…">${esc(c.notes||'')}</textarea>
     ${editing?'<button class="btn" id="c-dupe" style="width:100%;margin-top:12px;" title="Start a new comp with these settings">Duplicate</button>':''}
@@ -2718,20 +2737,11 @@ function openCompSheet(comp){
       <button class="btn primary" id="c-save">Save</button>
     </div>
   `,()=>{
-    const single=document.getElementById('c-single');
-    single.addEventListener('click',()=>single.classList.toggle('on'));
-    document.querySelectorAll('#c-dow .dow-btn').forEach(b=>b.addEventListener('click',()=>b.classList.toggle('sel')));
-    // Redeem frequency (new comps only): once / once-per-week / once-per-weekend.
-    const freqSeg=document.getElementById('c-freq'); let selFreq='once';
-    const singleRow=document.getElementById('c-single-row'), freqHint=document.getElementById('c-freq-hint');
-    function applyFreq(){if(singleRow)singleRow.style.display=selFreq==='once'?'':'none';if(freqHint)freqHint.style.display=selFreq==='once'?'none':'block';}
-    function setFreq(f){if(!freqSeg)return;selFreq=(f==='weekly'||f==='weekend')?f:'once';freqSeg.querySelectorAll('button').forEach(x=>x.classList.toggle('sel',x.dataset.freq===selFreq));applyFreq();}
-    if(freqSeg){freqSeg.querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>setFreq(b.dataset.freq)));applyFreq();}
-    function setDow(list){document.querySelectorAll('#c-dow .dow-btn').forEach(b=>b.classList.toggle('sel',(list||[]).includes(Number(b.dataset.dow))));}
-    // Scan a flyer/mailer photo -> ct-scan-comp -> prefill; a recurring offer is expanded.
+    wirePersonAdd('c-person');wireCasinoAdd('c-casino');
+    // Scan a flyer/mailer photo -> ct-scan-comp -> prefill the fields for review.
     function prefillComp(cp){
       if(cp.title)document.getElementById('c-title').value=cp.title;
-      if(cp.casino){const sel=document.getElementById('c-casino');let opt=[...sel.options].find(o=>o.value===cp.casino);if(!opt){opt=new Option(cp.casino,cp.casino);sel.add(opt);}sel.value=cp.casino;}
+      if(cp.casino){const sel=document.getElementById('c-casino');let opt=[...sel.options].find(o=>o.value===cp.casino);if(!opt){opt=new Option(cp.casino,cp.casino);sel.add(opt,[...sel.options].find(o=>o.value==='__addcasino')||null);}sel.value=cp.casino;}
       if(cp.valid_from)document.getElementById('c-from').value=cp.valid_from;
       if(cp.valid_to)document.getElementById('c-to').value=cp.valid_to;
       if(cp.notes)document.getElementById('c-notes').value=cp.notes;
@@ -2745,21 +2755,8 @@ function openCompSheet(comp){
         scanBtn.disabled=true;st.style.color='';st.textContent='Reading flyer…';
         try{const {data,media_type}=await fileToScaledBase64(f);
           const r=await api('ct-scan-comp',{image:data,media_type,today:state.today,casinos:CASINOS});
-          if(r&&r.ok&&r.comp){
-            const cp=r.comp;prefillComp(cp);
-            const reds=Array.isArray(cp.redemptions)?cp.redemptions:[];
-            if(reds.length>1){ // multiple rules (e.g. once/week + once/weekend) -> expand all, confirm
-              const base={person:document.getElementById('c-person').value.trim()||'Me',title:cp.title,casino:cp.casino,notes:cp.notes};
-              let comps=[];reds.forEach(rd=>{if(rd.frequency==='weekly'||rd.frequency==='weekend')comps=comps.concat(expandComps(base,rd.frequency,rd.dow,cp.valid_from,cp.valid_to));else comps.push({...base,single_use:!!cp.single_use,valid_from:cp.valid_from||null,valid_to:cp.valid_to||null,dow:rd.dow||null});});
-              if(comps.length){st.textContent=`Recurring offer — ${comps.length} comps.`;
-                if(await confirmDialog(`This offer expands to ${comps.length} one-time comps for ${base.person}. Create them?`,{confirmLabel:'Create '+comps.length})){const ok=afterWrite(await api('ct-write',{action:'save-comps',comps}));if(ok){toast('Added '+comps.length+' comps.');return;}}}
-              else st.textContent='Couldn’t work out the dates — enter it manually.';
-            }else{ // single rule -> fill the form for review
-              const rd=reds[0]||{frequency:'once',dow:null};
-              setFreq(rd.frequency);setDow(rd.dow);if(rd.frequency==='once'&&cp.single_use)single.classList.add('on');
-              st.textContent='Filled in — check it, then Save.';
-            }
-          } else st.textContent=(r&&r.message)||'Couldn’t read a comp — enter it manually.';
+          if(r&&r.ok&&r.comp){prefillComp(r.comp);st.textContent='Filled in — check it, then Save.';}
+          else st.textContent=(r&&r.message)||'Couldn’t read a comp — enter it manually.';
         }catch(e){st.textContent='Scan failed — enter it manually.';}
         finally{scanBtn.disabled=false;fi.value='';}
       });
@@ -2767,35 +2764,24 @@ function openCompSheet(comp){
     const saveBtn=document.getElementById('c-save');
     saveBtn.addEventListener('click',async()=>{
       if(saveBtn.disabled)return;
-      const dow=[...document.querySelectorAll('#c-dow .dow-btn.sel')].map(b=>Number(b.dataset.dow));
       const person=document.getElementById('c-person').value.trim()||'Me';
       const title=document.getElementById('c-title').value.trim()||'Comp';
       const casino=document.getElementById('c-casino').value.trim()||null;
       const notes=document.getElementById('c-notes').value.trim()||null;
       const from=document.getElementById('c-from').value||null,to=document.getElementById('c-to').value||null;
-      saveBtn.disabled=true;saveBtn.textContent='Saving…';let ok;
-      if(selFreq==='once'){
-        ok=afterWrite(await api('ct-write',{action:'save-comp',id:c.id||undefined,person,title,casino,notes,single_use:single.classList.contains('on'),valid_from:from,valid_to:to,dow}));
-      }else{
-        if(!from||!to){toast('Add a valid-from and valid-to date range for a recurring comp.');saveBtn.disabled=false;saveBtn.textContent='Save';return;}
-        const comps=expandComps({person,title,casino,notes},selFreq,dow,from,to);
-        if(!comps.length){toast('No eligible periods in that range.');saveBtn.disabled=false;saveBtn.textContent='Save';return;}
-        ok=afterWrite(await api('ct-write',{action:'save-comps',comps}));if(ok)toast('Added '+comps.length+' comps.');
-      }
+      saveBtn.disabled=true;saveBtn.textContent='Saving…';
+      const ok=afterWrite(await api('ct-write',{action:'save-comp',id:c.id||undefined,person,title,casino,notes,valid_from:from,valid_to:to}));
       if(!ok){saveBtn.disabled=false;saveBtn.textContent='Save';}
     });
-    // Duplicate: reopen as "New comp" carrying the form's CURRENT values (unsaved tweaks
-    // included); no id, so saving creates a separate comp. The original is left untouched.
+    // Duplicate: reopen as "New comp" carrying the form's CURRENT values; no id, so saving creates a separate comp.
     const dupeBtn=document.getElementById('c-dupe');
     if(dupeBtn)dupeBtn.addEventListener('click',()=>{
       openCompSheet({
         person:document.getElementById('c-person').value.trim()||'Me',
         title:document.getElementById('c-title').value.trim(),
         casino:document.getElementById('c-casino').value.trim()||null,
-        single_use:single.classList.contains('on'),
         valid_from:document.getElementById('c-from').value||null,
         valid_to:document.getElementById('c-to').value||null,
-        dow:[...document.querySelectorAll('#c-dow .dow-btn.sel')].map(b=>Number(b.dataset.dow)),
         notes:document.getElementById('c-notes').value.trim()||null});
     });
     if(editing){document.getElementById('c-del').addEventListener('click',async()=>{
@@ -2859,17 +2845,10 @@ function renderCompsPopupBody(){
       html+=`<div class="comp-pop-row" data-poprow="${c.id}">
         <span class="comp-dot" style="background:${esc(compColor(c))}"></span>
         <div class="cpr-main"><div class="cpr-title">${esc(c.title||'Comp')}${pill}</div><div class="cpr-sub">${esc(c.casino||'—')}</div></div>
-        <button class="cpr-btn" data-use="${c.id}">Mark used</button>
       </div>`;
     });
   });
   wrap.innerHTML=html;
-  wrap.querySelectorAll('[data-use]').forEach(btn=>btn.addEventListener('click',async()=>{
-    if(btn.disabled)return;btn.disabled=true;btn.textContent='…';
-    const r=await api('ct-write',{action:'use-comp',id:btn.dataset.use,date:state.today});
-    if(r&&r.ok){applyBootstrap(r.bootstrap);cacheState();renderCompsPopupBody();if(currentTab==='comps')renderComps();}
-    else{btn.disabled=false;btn.textContent='Mark used';}
-  }));
 }
 // Auto-show at most once per calendar day per user (keyed by auth id; 'mock' offline).
 function maybeShowCompsPopup(){
@@ -2883,9 +2862,15 @@ function maybeShowCompsPopup(){
   }catch(_){}
 }
 
-// ── Games manager ────────────────────────────────────────────────────────────
-function renderGames(){
-  const body=document.getElementById('games-body');
+// ── Settings (household, preferences, sign-out) ──────────────────────────────
+function householdNames(){
+  const hh=(state.household||[]).map(h=>h&&h.name).filter(Boolean);
+  if(hh.length)return hh;
+  // Fallback before anyone's added: distinct people already on comps, else a sensible default.
+  const seen=[];(state.comps||[]).forEach(c=>{if(c.person&&!seen.includes(c.person))seen.push(c.person);});
+  return seen.length?seen:['Me'];
+}
+function renderSettings(){
   const so=document.getElementById('so-email');if(so)so.textContent=MOCK?'demo mode':(userEmail||(account&&account.email)||'');
   const sob=document.getElementById('so-btn');if(sob&&!sob._bound){sob._bound=1;sob.addEventListener('click',doSignOut);}
   // Day-rollover setting: hours 12am–11am are the only sensible "day start" choices.
@@ -2895,6 +2880,58 @@ function renderGames(){
     rsel.innerHTML=Array.from({length:12},(_,h)=>`<option value="${h}"${h===cur?' selected':''}>${rolloverLabel(h)}</option>`).join('');
     if(!rsel._bound){rsel._bound=1;rsel.addEventListener('change',()=>setRolloverHour(parseInt(rsel.value,10)));}
   }
+  renderHousehold();
+}
+function renderHousehold(){
+  const list=document.getElementById('household-list');if(!list)return;
+  const hh=(state.household||[]).slice();
+  list.innerHTML = hh.length ? hh.map((h,i)=>`<div class="hh-row" data-hh="${h.id}">
+      <div class="hh-name">${esc(h.name)}</div>
+      <div class="hh-ctrls">
+        <button class="icon-btn" data-hh-up="${h.id}" ${i===0?'disabled':''} aria-label="Move up">▲</button>
+        <button class="icon-btn" data-hh-down="${h.id}" ${i===hh.length-1?'disabled':''} aria-label="Move down">▼</button>
+        <button class="icon-btn" data-hh-edit="${h.id}" aria-label="Rename">✎</button>
+        <button class="icon-btn" data-hh-del="${h.id}" aria-label="Remove">🗑</button>
+      </div></div>`).join('')
+    : `<div class="muted" style="font-size:13px;padding:4px 2px;">No one added yet. Add the people whose comps you track.</div>`;
+  const find=id=>(state.household||[]).find(x=>x.id===id);
+  list.querySelectorAll('[data-hh-up]').forEach(b=>b.addEventListener('click',()=>moveHousehold(b.dataset.hhUp,-1)));
+  list.querySelectorAll('[data-hh-down]').forEach(b=>b.addEventListener('click',()=>moveHousehold(b.dataset.hhDown,1)));
+  list.querySelectorAll('[data-hh-edit]').forEach(b=>b.addEventListener('click',async()=>{
+    const h=find(b.dataset.hhEdit);if(!h)return;
+    const name=await promptDialog({title:'Rename person',placeholder:'Name',confirmLabel:'Save',value:h.name});
+    if(!name||name===h.name)return;
+    const r=await api('ct-write',{action:'household-rename',id:h.id,name});
+    if(r&&r.ok){applyBootstrap(r.bootstrap);cacheState();renderHousehold();}else toast((r&&r.error)||'Couldn’t rename.');
+  }));
+  list.querySelectorAll('[data-hh-del]').forEach(b=>b.addEventListener('click',async()=>{
+    const h=find(b.dataset.hhDel);if(!h)return;
+    if(!await confirmDialog(`Remove ${h.name} from your household? Their existing comps stay.`,{confirmLabel:'Remove',danger:true}))return;
+    const r=await api('ct-write',{action:'household-remove',id:h.id});
+    if(r&&r.ok){applyBootstrap(r.bootstrap);cacheState();renderHousehold();}else toast((r&&r.error)||'Couldn’t remove.');
+  }));
+  const addBtn=document.getElementById('hh-add');
+  if(addBtn&&!addBtn._bound){addBtn._bound=1;addBtn.addEventListener('click',async()=>{
+    const name=await promptDialog({title:'Add a person',placeholder:'e.g. Wife, Son, Mom',confirmLabel:'Add'});
+    if(!name)return;
+    const r=await api('ct-write',{action:'household-add',name});
+    if(r&&r.ok){applyBootstrap(r.bootstrap);cacheState();renderHousehold();}else toast((r&&r.error)||'Couldn’t add.');
+  });}
+}
+async function moveHousehold(id,dir){
+  const ids=(state.household||[]).map(h=>h.id);
+  const i=ids.indexOf(id), j=i+dir;
+  if(i<0||j<0||j>=ids.length)return;
+  [ids[i],ids[j]]=[ids[j],ids[i]];
+  state.household=ids.map(x=>(state.household||[]).find(h=>h.id===x)).filter(Boolean);
+  renderHousehold();
+  const r=await api('ct-write',{action:'reorder-household',ids});
+  if(r&&r.ok){applyBootstrap(r.bootstrap);cacheState();}
+}
+
+// ── Games manager ────────────────────────────────────────────────────────────
+function renderGames(){
+  const body=document.getElementById('games-body');
   const games=state.games||[];
   if(games.length===0){body.innerHTML='<div class="empty">No fast-select games yet.<br>Add the machines/tables you play most.</div>';return;}
   const hint=games.length>1?'<div class="reorder-hint">Use ▲▼ to reorder — this is your Today tap order.</div>':'';
@@ -3190,6 +3227,9 @@ function openGameSheet(game,seed){
         <button type="button" data-bg="#ffffff">White</button>
       </div>
     </div>
+    <div class="toggle-row"><div class="tr-label">Hide name on tile
+      <div class="set-sub" style="margin-top:2px;">Show just the art on the Today tile. A game with variants still shows its “N variants” count.</div></div>
+      <div class="switch${g.hide_name?' on':''}" id="g-hidename"></div></div>
     ${game?`<button class="btn" id="g-dupe" style="width:100%;margin-top:12px;" title="Start a new game with these settings, Variant left blank">Duplicate as new variant</button>`:''}
     <div class="sheet-actions"><button class="btn" data-close-sheet>Cancel</button>
       <button class="btn primary" id="g-save">Save</button></div>
@@ -3202,6 +3242,8 @@ function openGameSheet(game,seed){
     // Bet-structure profile for credit-based machines (slot games only).
     let selProfile=(g.bet_profile&&(g.bet_profile==='standard'||getProfile(g.bet_profile)))?g.bet_profile:(num(g.credit_min)===88?'flaming_pots':'standard');
     const bpSel=document.getElementById('g-betprofile');if(bpSel){bpSel.value=selProfile;bpSel.addEventListener('change',()=>selProfile=bpSel.value);}
+    let hideName=!!g.hide_name;
+    const hnSw=document.getElementById('g-hidename');if(hnSw)hnSw.addEventListener('click',()=>{hideName=!hideName;hnSw.classList.toggle('on',hideName);});
     document.querySelectorAll('#g-cat button').forEach(b=>b.addEventListener('click',()=>{
       selCat=b.dataset.cat;document.querySelectorAll('#g-cat button').forEach(x=>x.classList.toggle('sel',x===b));
       applyStrategyUI('g',selCat);
@@ -3247,7 +3289,7 @@ function openGameSheet(game,seed){
         default_bet:slotty?(document.getElementById('g-bet').value||null):null,
         bet_profile:slotty?selProfile:'standard',
         default_buyin:document.getElementById('g-buyin').value||null,
-        image_url:imageUrl||null,art_bg:(imageUrl&&artBg)?artBg:null,
+        image_url:imageUrl||null,art_bg:(imageUrl&&artBg)?artBg:null,hide_name:hideName,
         dupe_from:g.id});  // insert the new game right below the one it was duped from
     });
 
@@ -3260,7 +3302,7 @@ function openGameSheet(game,seed){
         default_bet:isSlotty(selCat)?document.getElementById('g-bet').value:null,
         bet_profile:isSlotty(selCat)?selProfile:'standard',
         default_buyin:document.getElementById('g-buyin').value||null,
-        image_url:imageUrl||'',art_bg:(imageUrl&&artBg)?artBg:null,
+        image_url:imageUrl||'',art_bg:(imageUrl&&artBg)?artBg:null,hide_name:hideName,
         dupe_from:(g.id?null:(g.dupe_from||null))}));
     });
   });
@@ -3394,7 +3436,7 @@ function mockSeed(){
       {id:'g2',name:'Buffalo Gold',category:'slot',default_denom:0.01,default_bet:1.5,sort_order:1,archived:false,favorite:true},
       {id:'g3',name:'Dragon Link',category:'slot',default_denom:0.05,default_bet:5,variant:'Happy & Prosperous',variant_note:'Grand pays x5',sort_order:2,archived:false,favorite:true},
       {id:'g7',name:'Dragon Link',category:'slot',default_denom:0.05,default_bet:5,variant:'Autumn Moon',sort_order:6,archived:false,favorite:true},
-      {id:'g8',name:'Dragon Link',category:'slot',default_denom:0.01,default_bet:2,sort_order:7,archived:false,favorite:true},
+      {id:'g8',name:'Dragon Link',category:'slot',default_denom:0.01,default_bet:2,sort_order:7,archived:false,favorite:true,hide_name:true},
       {id:'g4',name:'Blackjack',category:'table',default_denom:null,default_bet:null,default_buyin:300,sort_order:3,archived:false},
       {id:'g5',name:'Dbl Double Bonus',category:'video_poker',default_denom:0.25,default_bet:1.25,sort_order:4,archived:false},
       {id:'g6',name:'Craps',category:'bubble_craps',variant:'3 Point Molly',strategy:'Pass line with odds and two Come bets with odds at all times',default_denom:null,default_bet:null,default_buyin:100,sort_order:5,archived:false,favorite:true},
@@ -3458,6 +3500,11 @@ function mockSeed(){
       {id:'bp1',account_id:'me',key:'u_brain_bonanza_demo',label:'Brain Bonanza (demo)',short:'Brain Bonanza',note:'User-built table (demo)',sort_order:0,archived:false,created_at:t+'T00:00:00',
         tiers:[{denoms:[0.01,0.02,0.05,0.10],levels:[75,150,225,375,750]}]},
     ],
+    household:[
+      {id:'hh1',account_id:'me',name:'Me',sort_order:0,created_at:t+'T00:00:00'},
+      {id:'hh2',account_id:'me',name:'Wife',sort_order:1,created_at:t+'T00:00:00'},
+      {id:'hh3',account_id:'me',name:'Son',sort_order:2,created_at:t+'T00:00:00'},
+    ],
   };
 }
 function mockBootstrap(today){
@@ -3483,7 +3530,8 @@ function mockBootstrap(today){
   const theme_casino=(active_trip&&active_trip.casino)||(lastTrip&&lastTrip.casino)||null;
   return {today,games,active_trip,active_trip_totals,sessions,carryover_open,stakes:(mockDB.stakes||[]).slice(),
     comps:(mockDB.comps||[]).slice(),comp_casinos:(mockDB.comp_casinos||[]).slice(),recent_games,theme_casino,
-    hitlist:(mockDB.hitlist||[]).slice(),bet_profiles:(mockDB.bet_profiles||[]).filter(p=>!p.archived).slice()};
+    hitlist:(mockDB.hitlist||[]).slice(),bet_profiles:(mockDB.bet_profiles||[]).filter(p=>!p.archived).slice(),
+    household:(mockDB.household||[]).slice().sort((a,b)=>a.sort_order-b.sort_order)};
 }
 function mockRecompute(s){s.buy_in_total=s.buyins.reduce((x,b)=>x+num(b.amount),0);}
 function mockId(p){return p+Math.random().toString(36).slice(2,8);}
@@ -3533,12 +3581,12 @@ function mockWrite(b){
   else if(a==='delete-bonus'){mockDB.sessions.forEach(s=>s.bonuses=s.bonuses.filter(x=>x.id!==b.id));}
   else if(a==='set-bonus-jackpot'){mockDB.sessions.forEach(s=>{const bx=s.bonuses.find(x=>x.id===b.id);if(bx)bx.is_jackpot=!!b.is_jackpot;});}
   else if(a==='save-game'){const img=('image_url' in b)?(b.image_url||null):undefined;const abg=('art_bg' in b)?(b.art_bg||null):undefined;const vr=('variant' in b)?(b.variant||null):undefined;const vn=('variant_note' in b)?(b.variant_note||null):undefined;
-    if(b.id){const g=mockDB.games.find(x=>x.id===b.id);if(g){Object.assign(g,{name:b.name,category:b.category,default_denom:b.default_denom?num(b.default_denom):null,default_bet:b.default_bet?num(b.default_bet):null,default_buyin:b.default_buyin?num(b.default_buyin):null});if(img!==undefined)g.image_url=img;if(abg!==undefined)g.art_bg=abg;if(vr!==undefined)g.variant=vr;if(vn!==undefined)g.variant_note=vn;if('strategy' in b)g.strategy=b.strategy;if('credit_min' in b)g.credit_min=num(b.credit_min)===88?88:0;if('bet_profile' in b)g.bet_profile=b.bet_profile||null;}}
+    if(b.id){const g=mockDB.games.find(x=>x.id===b.id);if(g){Object.assign(g,{name:b.name,category:b.category,default_denom:b.default_denom?num(b.default_denom):null,default_bet:b.default_bet?num(b.default_bet):null,default_buyin:b.default_buyin?num(b.default_buyin):null});if(img!==undefined)g.image_url=img;if(abg!==undefined)g.art_bg=abg;if(vr!==undefined)g.variant=vr;if(vn!==undefined)g.variant_note=vn;if('strategy' in b)g.strategy=b.strategy;if('credit_min' in b)g.credit_min=num(b.credit_min)===88?88:0;if('bet_profile' in b)g.bet_profile=b.bet_profile||null;if('hide_name' in b)g.hide_name=b.hide_name===true;}}
     else{const src=b.dupe_from?mockDB.games.find(x=>x.id===b.dupe_from):null;
       // A duplicate slots in right below its source: take source+1, shove everyone after it down.
       let so=mockDB.games.length;
       if(src){so=num(src.sort_order)+1;mockDB.games.forEach(x=>{if(num(x.sort_order)>=so)x.sort_order=num(x.sort_order)+1;});}
-      mockDB.games.push({id:mockId('g'),name:b.name,category:b.category,variant:vr||null,variant_note:vn||null,strategy:b.strategy||null,default_denom:b.default_denom?num(b.default_denom):null,default_bet:b.default_bet?num(b.default_bet):null,credit_min:num(b.credit_min)===88?88:0,bet_profile:b.bet_profile||null,default_buyin:b.default_buyin?num(b.default_buyin):null,image_url:img||null,art_bg:abg||null,sort_order:so,archived:false});}}
+      mockDB.games.push({id:mockId('g'),name:b.name,category:b.category,variant:vr||null,variant_note:vn||null,strategy:b.strategy||null,default_denom:b.default_denom?num(b.default_denom):null,default_bet:b.default_bet?num(b.default_bet):null,credit_min:num(b.credit_min)===88?88:0,bet_profile:b.bet_profile||null,hide_name:b.hide_name===true,default_buyin:b.default_buyin?num(b.default_buyin):null,image_url:img||null,art_bg:abg||null,sort_order:so,archived:false});}}
   else if(a==='delete-game'){const g=mockDB.games.find(x=>x.id===b.id);if(g)g.archived=true;}
   else if(a==='set-game-favorite'){const g=mockDB.games.find(x=>x.id===b.id);if(g)g.favorite=b.favorite===true;}
   else if(a==='set-game-credit-min'){const g=mockDB.games.find(x=>x.id===b.id);if(g)g.credit_min=num(b.credit_min)===88?88:0;}
@@ -3587,6 +3635,15 @@ function mockWrite(b){
         mockDB.bet_profiles.push({id:mockId('bp'),account_id:'me',key,label,short,note,tiers,sort_order:n,archived:false,created_at:new Date().toISOString()});}}}
   else if(a==='delete-bet-profile'){const it=(mockDB.bet_profiles||[]).find(x=>x.id===b.id);
     if(it){it.archived=true;mockDB.games.forEach(g=>{if(g.bet_profile===it.key)g.bet_profile=null;});}}
+  else if(a==='household-add'){const name=String(b.name||'').trim().slice(0,60);if(!name)return;
+    mockDB.household=mockDB.household||[];
+    if(mockDB.household.some(h=>h.name.toLowerCase()===name.toLowerCase()))return;
+    const n=mockDB.household.reduce((m,h)=>Math.max(m,num(h.sort_order)+1),0);
+    mockDB.household.push({id:mockId('hh'),account_id:'me',name,sort_order:n,created_at:new Date().toISOString()});}
+  else if(a==='household-rename'){const h=(mockDB.household||[]).find(x=>x.id===b.id);const name=String(b.name||'').trim().slice(0,60);
+    if(h&&name){const old=h.name;h.name=name;(mockDB.comps||[]).forEach(c=>{if(c.person===old)c.person=name;});}}
+  else if(a==='household-remove'){mockDB.household=(mockDB.household||[]).filter(x=>x.id!==b.id);}
+  else if(a==='reorder-household'){const ids=Array.isArray(b.ids)?b.ids:[];ids.forEach((id,i)=>{const h=(mockDB.household||[]).find(x=>x.id===id);if(h)h.sort_order=i;});}
 }
 // Mirror the server's cleanTiers: array of {denoms:number[], levels:int[]}, positive and de-duped.
 function mockCleanTiers(raw){if(!Array.isArray(raw))return [];const out=[];
