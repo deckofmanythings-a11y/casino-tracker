@@ -802,7 +802,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.58';
+const APP_VERSION='0.9.59';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -1368,20 +1368,29 @@ function gisLoaded(){return !!(window.google&&google.accounts&&google.accounts.o
 function waitForGis(ms=9000){return new Promise((res,rej)=>{const t0=Date.now();(function chk(){
   if(gisLoaded())return res();if(Date.now()-t0>ms)return rej(new Error('Google sign-in failed to load'));setTimeout(chk,100);})();});}
 let _tokResolve=null,_tokReject=null;
+// Persist the access token + identity so a page reload stays signed in without re-prompting Google
+// (GIS tokens live only in memory and last ~1h; this app has no backend to hold a refresh token).
+function storeToken(){try{localStorage.setItem('ct_g_token',JSON.stringify({t:gAccessToken,exp:gTokenExp}));}catch(_){}}
+function readStoredToken(){try{const s=JSON.parse(localStorage.getItem('ct_g_token'));if(s&&s.t&&s.exp&&Date.now()<s.exp-60000)return s;}catch(_){}return null;}
+function clearStoredToken(){try{localStorage.removeItem('ct_g_token');localStorage.removeItem('ct_g_account');}catch(_){}}
+function storeAccount(a){try{localStorage.setItem('ct_g_account',JSON.stringify(a));}catch(_){}}
+function readStoredAccount(){try{return JSON.parse(localStorage.getItem('ct_g_account'))||null;}catch(_){return null;}}
 function initTokenClient(){if(gTokenClient)return;
   gTokenClient=google.accounts.oauth2.initTokenClient({client_id:GOOGLE_CLIENT_ID,scope:DRIVE_SCOPE,
     callback:(resp)=>{
       if(resp&&resp.error){if(_tokReject)_tokReject(new Error(resp.error));return;}
-      gAccessToken=resp.access_token;gTokenExp=Date.now()+((resp.expires_in||3600)*1000);
+      gAccessToken=resp.access_token;gTokenExp=Date.now()+((resp.expires_in||3600)*1000);storeToken();
       if(_tokResolve)_tokResolve(gAccessToken);},
     error_callback:(err)=>{if(_tokReject)_tokReject(new Error((err&&(err.type||err.message))||'auth_failed'));}});}
 // Get an access token. interactive=true pops Google's account/consent UI (needs a user gesture);
 // false tries silently (works once granted + a live Google session).
-function getToken(interactive){return new Promise((resolve,reject)=>{
-  if(gAccessToken&&Date.now()<gTokenExp-60000)return resolve(gAccessToken);
-  initTokenClient();_tokResolve=resolve;_tokReject=reject;
-  try{gTokenClient.requestAccessToken({prompt:interactive?'consent':''});}catch(e){reject(e);}
-});}
+async function getToken(interactive){
+  if(gAccessToken&&Date.now()<gTokenExp-60000)return gAccessToken;
+  if(!gisLoaded())await waitForGis();
+  initTokenClient();
+  return new Promise((resolve,reject)=>{_tokResolve=resolve;_tokReject=reject;
+    try{gTokenClient.requestAccessToken({prompt:interactive?'consent':''});}catch(e){reject(e);}});
+}
 async function driveFetch(url,opts){opts=opts||{};opts.headers=Object.assign({Authorization:'Bearer '+gAccessToken},opts.headers||{});
   let res=await fetch(url,opts);
   if(res.status===401){gAccessToken=null;await getToken(false);opts.headers.Authorization='Bearer '+gAccessToken;res=await fetch(url,opts);}
@@ -1444,9 +1453,16 @@ async function driveResume(){
     if(v>driveVersion){driveVersion=v;mockDB=normalizeDB(await driveReadContent(),account);reloadFromLocalDB();}
   }catch(_){}}
 
-// Boot: silent resume if the user signed in before, else show the Google button.
+// Boot: 1) reuse a still-valid saved token (instant, no Google UI — the common refresh case),
+// 2) silent re-auth via GIS if we signed in before, 3) otherwise show the button.
 async function startDrive(){
   showSplash('Loading…');
+  const tok=readStoredToken(),acct=readStoredAccount();
+  if(tok&&acct){
+    gAccessToken=tok.t;gTokenExp=tok.exp;userEmail=acct.email;
+    try{await driveLoadDB(acct);boot(acct,mockBootstrap(todayLocal()));return;}
+    catch(e){gAccessToken=null;gTokenExp=0;clearStoredToken();}
+  }
   try{await waitForGis();}catch(e){showSplash('Couldn’t load Google sign-in. Check your connection and reload.');$('auth-reconnect').style.display='block';return;}
   let wasIn=false;try{wasIn=localStorage.getItem('ct_google_signed_in')==='1';}catch(_){}
   if(wasIn){try{await getToken(false);await driveSignedIn();return;}catch(e){/* fall through to the button */}}
@@ -1462,7 +1478,7 @@ async function driveSignedIn(){
   showSplash('Loading your tracker…');
   const info=await googleUserInfo();
   const acct={id:info.sub,auth_user_id:info.sub,email:info.email,name:info.name};
-  userEmail=info.email;
+  userEmail=info.email;storeAccount(acct);
   await driveLoadDB(acct);
   boot(acct,mockBootstrap(todayLocal()));
 }
@@ -1572,6 +1588,7 @@ async function doSignOut(){
   if(DRIVE){
     try{if(driveSaveTimer){clearTimeout(driveSaveTimer);}if(driveDirty)await flushDriveSave();}catch(_){}
     gAccessToken=null;gTokenExp=0;driveFileId=null;driveVersion=0;mockDB=null;
+    clearStoredToken();
     try{localStorage.removeItem('ct_google_signed_in');}catch(_){}
   }else{
     try{await sb.auth.signOut();}catch(_){}
