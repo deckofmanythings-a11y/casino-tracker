@@ -22,30 +22,30 @@ as the first user. Part 2 (verification) runs in the background and doesn't bloc
 1. Left menu → **APIs & Services → Library**.
 2. Search **Google Drive API** → open it → **Enable**.
 
-### 3. Configure the OAuth consent screen
-1. **APIs & Services → OAuth consent screen**.
-2. User type: **External** → Create.
-3. Fill in:
-   - **App name:** `Casino Session Tracker`
-   - **User support email:** your email
-   - **App logo:** optional (a square PNG; helps the consent screen look trustworthy)
-   - **App domain → Application home page:** `https://deckofmanythings-a11y.github.io/casino-tracker/`
-   - **Application privacy policy link:** `https://deckofmanythings-a11y.github.io/casino-tracker/privacy.html`
-   - **Application terms of service link:** optional (can leave blank)
+### 3. Configure the consent screen ("Google Auth Platform")
+Google's new UI calls this **Google Auth Platform** (APIs & Services → OAuth consent screen now opens it).
+If you see an Overview that says "not configured yet", click **Get started** and complete the wizard:
+- **App Information:** App name `Casino Session Tracker`; User support email = your email.
+- **Audience:** **External**.
+- **Contact Information:** your email. → Agree → **Create**.
+
+Then use the left-nav sections:
+1. **Branding** →
+   - **App home page:** `https://deckofmanythings-a11y.github.io/casino-tracker/`
+   - **Privacy policy:** `https://deckofmanythings-a11y.github.io/casino-tracker/privacy.html`
    - **Authorized domains:** add `github.io`
-   - **Developer contact email:** your email
-4. **Scopes** step → **Add or remove scopes** → add these (search by name), then Update:
+   - App logo: optional (square PNG; makes the consent screen look trustworthy). → Save.
+2. **Audience** → **Test users → Add users** → your own Google account. Leave status as **Testing** for now.
+3. **Data Access** → **Add or remove scopes** → add these, then **Update → Save**:
+   - `openid`
    - `.../auth/userinfo.email`
    - `.../auth/userinfo.profile`
-   - `openid`
    - **`.../auth/drive.file`**  ← the important one (per-file Drive access)
    - All four are **non-sensitive**, which keeps verification light (no security assessment).
-5. **Test users** step → add your own Google account email. (While the app is in "Testing", only
-   listed test users can sign in — that's all we need to build + test.)
-6. Save.
 
 ### 4. Create the OAuth Client ID
-1. **APIs & Services → Credentials → Create credentials → OAuth client ID**.
+1. **Google Auth Platform → Clients → Create client** (older UIs: APIs & Services → Credentials →
+   Create credentials → OAuth client ID).
 2. **Application type: Web application.** Name: `casino-tracker web`.
 3. **Authorized JavaScript origins** — add each of these (exactly, no trailing slash):
    - `https://deckofmanythings-a11y.github.io`
@@ -65,7 +65,8 @@ live GitHub Pages URL with your account.
 While in **Testing**, only your listed test users can sign in, and sign-ins may need re-approval every
 few days. To hand the app to anyone:
 
-1. **OAuth consent screen → Publish app → Confirm** (moves it to "In production").
+1. **Google Auth Platform → Audience → Publish app → Confirm** (moves it to "In production"). Verification
+   is then tracked under **Verification Center**.
 2. Google will ask you to **verify** the app. Because every scope we use is **non-sensitive**, this is
    the lighter **brand verification** (app name, logo, the home-page and privacy-policy URLs above, and
    the `github.io` authorized domain) — **not** the expensive restricted-scope security assessment.
