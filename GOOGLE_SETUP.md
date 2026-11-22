@@ -1,0 +1,79 @@
+# Google Cloud setup for Casino Session Tracker (Drive storage)
+
+This gets you an **OAuth Client ID** so the app can sign users in with Google and store each person's
+data in their own Google Drive (`drive.file` scope). You only do this once.
+
+When you finish Part 1, **send me the Client ID** (it looks like `1234567890-abc123.apps.googleusercontent.com`
+— it is public, not a secret, so it's fine to paste). Then I'll wire up the app and we test it with you
+as the first user. Part 2 (verification) runs in the background and doesn't block our testing.
+
+---
+
+## Part 1 — Create the project + Client ID  (do this now)
+
+### 1. Create a project
+1. Go to <https://console.cloud.google.com/>.
+2. Top bar → project dropdown → **New Project**. Name it `casino-tracker`. Create, then select it.
+
+### 2. Enable the Drive API
+1. Left menu → **APIs & Services → Library**.
+2. Search **Google Drive API** → open it → **Enable**.
+
+### 3. Configure the OAuth consent screen
+1. **APIs & Services → OAuth consent screen**.
+2. User type: **External** → Create.
+3. Fill in:
+   - **App name:** `Casino Session Tracker`
+   - **User support email:** your email
+   - **App logo:** optional (a square PNG; helps the consent screen look trustworthy)
+   - **App domain → Application home page:** `https://deckofmanythings-a11y.github.io/casino-tracker/`
+   - **Application privacy policy link:** `https://deckofmanythings-a11y.github.io/casino-tracker/privacy.html`
+   - **Application terms of service link:** optional (can leave blank)
+   - **Authorized domains:** add `github.io`
+   - **Developer contact email:** your email
+4. **Scopes** step → **Add or remove scopes** → add these (search by name), then Update:
+   - `.../auth/userinfo.email`
+   - `.../auth/userinfo.profile`
+   - `openid`
+   - **`.../auth/drive.file`**  ← the important one (per-file Drive access)
+   - All four are **non-sensitive**, which keeps verification light (no security assessment).
+5. **Test users** step → add your own Google account email. (While the app is in "Testing", only
+   listed test users can sign in — that's all we need to build + test.)
+6. Save.
+
+### 4. Create the OAuth Client ID
+1. **APIs & Services → Credentials → Create credentials → OAuth client ID**.
+2. **Application type: Web application.** Name: `casino-tracker web`.
+3. **Authorized JavaScript origins** — add each of these (exactly, no trailing slash):
+   - `https://deckofmanythings-a11y.github.io`
+   - `http://localhost:8080`
+   - `http://127.0.0.1:8080`
+4. **Authorized redirect URIs:** leave empty (the Google Identity popup doesn't need one).
+5. Create → **copy the Client ID**.
+
+### 5. Send me the Client ID
+Paste it to me and I'll build the Drive integration. We'll test on `http://localhost:8080` and on the
+live GitHub Pages URL with your account.
+
+---
+
+## Part 2 — Publish for everyone else  (do this once the app works for you)
+
+While in **Testing**, only your listed test users can sign in, and sign-ins may need re-approval every
+few days. To hand the app to anyone:
+
+1. **OAuth consent screen → Publish app → Confirm** (moves it to "In production").
+2. Google will ask you to **verify** the app. Because every scope we use is **non-sensitive**, this is
+   the lighter **brand verification** (app name, logo, the home-page and privacy-policy URLs above, and
+   the `github.io` authorized domain) — **not** the expensive restricted-scope security assessment.
+3. Submit. Review is typically a few days to a couple of weeks. Until it's approved, outside users may
+   see an "unverified app" warning they can click past, but publishing removes the test-user cap.
+
+---
+
+## Notes
+- The **Client ID is public** and will live in the app's HTML — that's normal and safe for this flow.
+  There is **no client secret** in this setup (browser apps don't use one).
+- Before publishing, open `privacy.html` and fill in the **effective date** and a **contact email**
+  (I left those as placeholders so your personal email isn't committed unless you choose to).
+- No billing is required for any of this.
