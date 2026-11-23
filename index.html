@@ -812,7 +812,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.63';
+const APP_VERSION='0.9.64';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -1163,9 +1163,10 @@ function ladderDenom(d){return d<1?(Math.round(d*100)+'¢'):('$'+d);}
 // Drums family…) don't take an arbitrary dollar bet: you pick a DENOMINATION, then a credit "bet
 // level" from that machine's menu, and the dollar bet = denom × credits. Each BET_PROFILE captures
 // one real machine's menu, by denomination tier (read off the machine's bet-select screen). We
-// rebuild the Attack Ladder for a profile by mapping each rung's target bet to the CLOSEST
-// achievable denom×credits — ties broken toward MORE credits (= better jackpot odds, same cost,
-// which is what the machines' own "better jackpot odds" arrow rewards). Bands + lock-ups unchanged.
+// rebuild the Attack Ladder for a profile by mapping each rung's target bet to an achievable
+// denom×credits — leaning toward a HIGHER denomination (bigger jackpot payouts = a little inherent
+// EV), even if that lands a bit farther from the source bet. DENOM_PULL controls how far.
+// Bands + lock-ups unchanged.
 // Three profiles ship in code (machines the user photographed). User-built ones live in
 // state.bet_profiles (ct_bet_profiles, synced) and merge in through allProfiles(). A profile is
 // {label,short,note,tiers:[{denoms:[],levels:[]}]}; getProfile(key) resolves either source.
@@ -1185,23 +1186,45 @@ function profileKeys(){return Object.keys(allProfiles());}
 function getProfile(k){return k?(allProfiles()[k]||null):null;}
 function profileOptions(p){const out=[];(p.tiers||[]).forEach(t=>(t.denoms||[]).forEach(d=>(t.levels||[]).forEach(c=>{
   d=num(d);c=num(c);if(d>0&&c>0)out.push({denom:d,credits:+c,bet:+(d*c).toFixed(2)});})));return out;}
-function closestBet(opts,target){let best=null;for(const o of opts){if(!best){best=o;continue;}
-  const d0=Math.abs(best.bet-target),d1=Math.abs(o.bet-target);
-  if(d1<d0-1e-9){best=o;continue;}
-  if(Math.abs(d1-d0)<1e-9){ // equidistant: prefer the LOWER dollar; for the SAME dollar, more credits = better jackpot odds
-    if(o.bet<best.bet-1e-9)best=o;
-    else if(Math.abs(o.bet-best.bet)<1e-9&&o.credits>best.credits)best=o;
-  }}return best;}
+// How far a rung may drift from the source-of-truth bet to pick up a HIGHER denomination. Higher
+// denom = bigger jackpot payouts = a smidge of inherent EV, so we'll accept a bet up to this fraction
+// of the target farther from the ladder if it buys a higher denom. ONE knob: raise it to lean harder
+// on denom, lower it to hug the source ladder. 0 = pure nearest-bet (the old behavior).
+const DENOM_PULL=0.15;
+// Choose the combo for a target bet. Among every combo within (nearest + DENOM_PULL×target) of the
+// target, take the HIGHEST denom; break ties by closeness to target, then more credits (jackpot
+// eligibility), then lower dollar. Note: we can't see a machine's credit-eligibility threshold (it's
+// only in the free-text note), so denom is weighted, not credit minimums.
+function closestBet(opts,target){
+  if(!opts||!opts.length)return null;
+  let min=Infinity;for(const o of opts){const d=Math.abs(o.bet-target);if(d<min)min=d;}
+  const band=min+DENOM_PULL*target+1e-9;
+  let best=null;
+  for(const o of opts){
+    if(Math.abs(o.bet-target)>band)continue;              // too far even with the denom allowance
+    if(!best){best=o;continue;}
+    if(o.denom>best.denom+1e-9){best=o;continue;}          // higher denom wins
+    if(Math.abs(o.denom-best.denom)<1e-9){                 // same denom → closest, then more credits
+      const db=Math.abs(best.bet-target),d1=Math.abs(o.bet-target);
+      if(d1<db-1e-9){best=o;continue;}
+      if(Math.abs(d1-db)<1e-9&&o.credits>best.credits)best=o;
+    }
+  }
+  return best;
+}
 // Build a profile's Attack Ladder: each rung → the closest achievable denom×credits to the
-// standard bet. Then a DISTINCTNESS pass separates two adjacent rungs that collapsed onto the
-// SAME bet, but only when the machine's menu actually has an unused value that fits strictly
-// between their neighbours (so order + closeness are preserved). Where the menu has no value
-// between — e.g. Frightful Fortunes jumps $4.50 → $7.50 → $11.25 with nothing between, so
-// Attack 2 & 3 both want $7.50 — the duplicate stands. "All rungs different IF POSSIBLE."
+// (denom-weighted) bet. Then a DISTINCTNESS pass separates two adjacent rungs that collapsed onto
+// the SAME bet, but only when the machine's menu actually has an unused value that fits strictly
+// between their neighbours (so order is preserved). If a relocated rung's distinct dollar is only
+// achievable at a lower denom, distinctness wins over the denom lean there. Where the menu has no
+// value between two colliding rungs at all, the duplicate stands. "All rungs different IF POSSIBLE."
 function buildProfileLadder(p){
   const opts=profileOptions(p);if(!opts.length)return LADDER.slice();
   const lad=LADDER.map(r=>{const o=closestBet(opts,r.bet);return {...r,_target:r.bet,denom:o.denom,bet:o.bet};});
-  const byBet={};opts.forEach(o=>{if(!byBet[o.bet]||o.credits>byBet[o.bet].credits)byBet[o.bet]=o;}); // best combo per $ (most credits)
+  // best combo per $: HIGHEST denom (bigger jackpots — same preference as closestBet), then most
+  // credits. A relocated rung (distinctness pass) thus keeps the denom lean instead of snapping low.
+  const byBet={};opts.forEach(o=>{const c=byBet[o.bet];
+    if(!c||o.denom>c.denom+1e-9||(Math.abs(o.denom-c.denom)<1e-9&&o.credits>c.credits))byBet[o.bet]=o;});
   const uniq=Object.values(byBet).sort((a,b)=>a.bet-b.bet);
   const setCombo=(r,bet)=>{const o=byBet[bet];r.denom=o.denom;r.bet=o.bet;};
   // nearest UNUSED value to `tgt` strictly inside (lo,hi)
@@ -3621,7 +3644,7 @@ function openBetTableBuilder(profile){
       <input class="bt-levels" inputmode="text" placeholder="75 150 225 375 750 (space or comma)" value="${esc(levels)}"></div>`;};
   const startTiers=(profile&&profile.tiers&&profile.tiers.length)?profile.tiers:[{denoms:[],levels:[]}];
   openSheet(profile&&profile.id?'Edit bet table':'New bet table',`
-    <div class="muted" style="font-size:12px;margin-bottom:8px;">Enter a machine's bet menu — the denominations and the credit bet levels you can pick. The ladder rebuilds to the closest bet on this machine and keeps rungs distinct wherever the menu allows.</div>
+    <div class="muted" style="font-size:12px;margin-bottom:8px;">Enter a machine's bet menu — the denominations and the credit bet levels you can pick. The ladder rebuilds to the closest bet on this machine, leaning toward a higher denomination (bigger jackpots) when one is close, and keeps rungs distinct wherever the menu allows.</div>
     <label class="field">Machine name</label>
     <input id="bt-name" placeholder="Hot Pot · Dancing Drums · 88 Fortunes" value="${esc(profile?profile.label:'')}" autocomplete="off">
     <div id="bt-tiers">${startTiers.map(tierCard).join('')}</div>
