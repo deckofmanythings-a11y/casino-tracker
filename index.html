@@ -812,7 +812,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.61';
+const APP_VERSION='0.9.62';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -1372,6 +1372,7 @@ function applyBootstrap(b){if(!b)return;state={...state,...b};applyCasinoTheme(s
 function emptyDB(acct){return {account:acct,games:[],trips:[],sessions:[],stakes:[],comps:[],comp_casinos:[],hitlist:[],bet_profiles:[],household:[],_rev:0};}
 let gTokenClient=null,gAccessToken=null,gTokenExp=0;
 let driveFileId=null,driveVersion=0,driveSaveTimer=null,driveSaving=false,driveDirty=false;
+let driveOffline=false,driveBackoff=2500;
 
 function gisLoaded(){return !!(window.google&&google.accounts&&google.accounts.oauth2);}
 function waitForGis(ms=9000){return new Promise((res,rej)=>{const t0=Date.now();(function chk(){
@@ -1425,7 +1426,14 @@ async function driveCreateFile(obj){
   driveFileId=(await m.json()).id;await driveWrite(obj);}
 async function driveReadContent(){const res=await driveFetch('https://www.googleapis.com/drive/v3/files/'+driveFileId+'?alt=media');
   if(!res.ok)throw new Error('Drive load failed ('+res.status+')');return res.json();}
-function serializeDB(){mockDB._rev=(mockDB._rev||0)+1;mockDB._savedAt=new Date().toISOString();mockDB._schema=1;return mockDB;}
+// Bump the version counter + write the local cache. MUST happen at mutation time (not at Drive-write
+// time): the reload-guard in driveLoadDB keeps the local copy only when its _rev is strictly ahead of
+// the Drive file's. If we bumped only when the Drive write lands, a mutation whose write FAILED (e.g.
+// flaky casino wifi) would leave local and Drive at the same _rev, and the guard would silently drop
+// the un-synced change on the next reload. Bumping here guarantees un-synced writes always win.
+function stampLocal(){mockDB._rev=(mockDB._rev||0)+1;mockDB._savedAt=new Date().toISOString();mockDB._schema=1;
+  try{localStorage.setItem('ct_drive_db_'+(account&&account.id),JSON.stringify(mockDB));}catch(_){}}
+function serializeDB(){mockDB._schema=1;return mockDB;} // _rev already current (bumped by stampLocal)
 // Coerce a loaded file into the in-memory DB shape; account is always the current Google identity.
 function normalizeDB(data,acct){const d=(data&&typeof data==='object')?data:{};const db=emptyDB(acct);
   ['games','trips','sessions','stakes','comps','comp_casinos','hitlist','bet_profiles','household'].forEach(k=>{if(Array.isArray(d[k]))db[k]=d[k];});
@@ -1448,15 +1456,19 @@ async function driveLoadDB(acct){
     else throw e;
   }}
 // Debounced save after every mutation. Also keeps a local copy for offline/instant reloads.
-function scheduleDriveSave(){driveDirty=true;try{localStorage.setItem('ct_drive_db_'+(account&&account.id),JSON.stringify(mockDB));}catch(_){}
+function scheduleDriveSave(){driveDirty=true;stampLocal();
   if(driveSaveTimer)clearTimeout(driveSaveTimer);driveSaveTimer=setTimeout(flushDriveSave,1200);}
 async function flushDriveSave(){
   if(driveSaving){driveSaveTimer=setTimeout(flushDriveSave,500);return;}
   if(!driveDirty||!driveFileId)return;
   driveSaving=true;driveDirty=false;
-  try{await driveWrite(serializeDB());}
-  catch(e){driveDirty=true;toast('Couldn’t sync to Google Drive — will retry.');}
-  finally{driveSaving=false;if(driveDirty)driveSaveTimer=setTimeout(flushDriveSave,2500);}}
+  try{await driveWrite(serializeDB());
+    if(driveOffline){driveOffline=false;toast('Back online — synced to Google Drive ✓');}
+    driveBackoff=2500;}
+  catch(e){driveDirty=true; // keep retrying; the local copy already holds everything (stampLocal)
+    if(!driveOffline){driveOffline=true;toast('Can’t reach Google Drive — saved on this device, will sync when you’re back online.');}}
+  finally{driveSaving=false;
+    if(driveDirty){driveSaveTimer=setTimeout(flushDriveSave,driveBackoff);driveBackoff=Math.min(driveBackoff*2,30000);}}}
 function reloadFromLocalDB(){applyBootstrap(mockBootstrap(todayLocal()));
   const t=currentTab;
   if(t==='today')renderToday();else if(t==='comps')renderComps();else if(t==='games')renderGames();
@@ -1528,7 +1540,7 @@ function mergeImport(src){
   (mockDB.sessions||[]).forEach(s=>{s.buyins=s.buyins||[];s.bonuses=s.bonuses||[];});
   return added;
 }
-async function persistNow(){if(DRIVE){driveDirty=true;try{localStorage.setItem('ct_drive_db_'+(account&&account.id),JSON.stringify(mockDB));}catch(_){}await flushDriveSave();}}
+async function persistNow(){if(DRIVE){driveDirty=true;stampLocal();await flushDriveSave();}}
 function downloadBackup(){
   try{const blob=new Blob([JSON.stringify(mockDB||{})],{type:'application/json'});
     const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='casino-tracker-backup-'+todayLocal()+'.json';
@@ -1703,6 +1715,12 @@ async function onResume(){
   finally{resuming=false;}
 }
 document.addEventListener('visibilitychange',onResume);
+// Push any pending Drive write the moment the tab is backgrounded or closed (phone lock, app switch,
+// tab close). The local copy is already safe via stampLocal; this just syncs it to Drive sooner, while
+// we most likely still have a connection. Best-effort — the browser may suspend us mid-request.
+function flushOnHide(){if(DRIVE&&driveDirty){try{flushDriveSave();}catch(_){}}}
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')flushOnHide();});
+window.addEventListener('pagehide',flushOnHide);
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  Rendering
