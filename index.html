@@ -812,7 +812,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.64';
+const APP_VERSION='0.9.65';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -3584,6 +3584,39 @@ function openGameSheet(game,seed){
 //  denom×credits (buildProfileLadder). Entry point: Games tab → "Bet tables".
 // ═══════════════════════════════════════════════════════════════════════════
 const DENOM_PALETTE=[0.01,0.02,0.05,0.10,0.25,0.50,1,2,5];
+// ── Machine scan (📷) ─────────────────────────────────────────────────────────
+// Photograph a machine's denom/bet-select screens → the ct-scan-bets edge function
+// (Claude vision) reads each denom's credit levels; we group denoms that share the
+// same levels into tiers and prefill the Bet Table builder. DRIVE/MOCK only.
+function centsToDenom(c){return DENOM_PALETTE.find(d=>Math.abs(d*100-c)<0.5);}
+// [{denom_cents,credits[]}] → [{denoms[],levels[]}] (denoms sharing a level-set merge).
+function denomsToTiers(denoms){
+  const groups=[];
+  (denoms||[]).forEach(d=>{const dn=centsToDenom(d&&d.denom_cents);if(dn==null)return;
+    const levels=[...new Set((d.credits||[]).map(Number).filter(n=>n>0))].sort((a,b)=>a-b);
+    if(!levels.length)return;
+    const key=levels.join(',');let g=groups.find(x=>x.key===key);
+    if(!g){g={key,levels,denoms:[]};groups.push(g);}
+    if(!g.denoms.includes(dn))g.denoms.push(dn);});
+  groups.forEach(g=>g.denoms.sort((a,b)=>a-b));
+  groups.sort((a,b)=>Math.min(...a.denoms)-Math.min(...b.denoms));
+  return groups.map(g=>({denoms:g.denoms,levels:g.levels}));
+}
+function mockScanBets(){return {ok:true,machine_name:'Bayou Sky',denoms:[
+  {denom_cents:1,credits:[75,150,225,375,600]},{denom_cents:2,credits:[75,150,225,375,600]},
+  {denom_cents:5,credits:[30,60,90,150,240]},{denom_cents:10,credits:[30,60,90,150,240]},
+  {denom_cents:100,credits:[10,20,30,40,50]},{denom_cents:200,credits:[10,20,30,40,50]},
+  {denom_cents:500,credits:[10,20,30]}]};}
+async function scanMachine(files){
+  if(MOCK){await new Promise(r=>setTimeout(r,450));return mockScanBets();}
+  let tok=null;try{tok=await getToken();}catch(_){}
+  if(!tok)return {ok:false,message:'Sign in with Google to scan.'};
+  const images=[];
+  for(const f of files){try{images.push(await fileToScaledBase64(f));}catch(_){}}
+  if(!images.length)return {ok:false,message:'Couldn’t read those image files.'};
+  try{return await callFn('ct-scan-bets',{google_token:tok,images});}
+  catch(e){return {ok:false,message:(e&&e.message)||'Network error.'};}
+}
 function profileSummary(p){const d=new Set();(p.tiers||[]).forEach(t=>(t.denoms||[]).forEach(x=>d.add(num(x))));
   const g=(p.tiers||[]).length;return `${d.size} denom${d.size===1?'':'s'} · ${g} group${g===1?'':'s'}`;}
 // The computed Attack Ladder as a compact table (used in the builder preview and the view sheet).
@@ -3615,10 +3648,13 @@ function openBetTablesSheet(){
   openSheet('Bet tables',`
     <div class="muted" style="font-size:12px;margin-bottom:10px;">Each table is one credit-based machine's bet menu (Hot Pot, Dancing Drums, Frightful Fortunes…). The ⚔️ Attack Ladder uses it to pick the denom + credit bet closest to every rung. Build your own right at the machine.</div>
     <button class="btn primary" id="bt-new" style="width:100%;">+ New machine table</button>
+    ${(DRIVE||MOCK)?`<button class="btn" id="bt-scan-new" style="width:100%;margin-top:8px;">📷 Scan a machine with the camera</button>`:''}
     <div class="bt-sec">Your tables</div>${customRows}
     <div class="bt-sec">Built-in</div>${biRows}
   `,()=>{
     document.getElementById('bt-new').addEventListener('click',()=>openBetTableBuilder(null));
+    const scanNew=document.getElementById('bt-scan-new');
+    if(scanNew)scanNew.addEventListener('click',()=>openBetTableBuilder(null));
     document.querySelectorAll('[data-bt-view]').forEach(b=>b.addEventListener('click',()=>openLadderPreviewSheet(b.dataset.btView)));
     document.querySelectorAll('[data-bt-edit]').forEach(b=>b.addEventListener('click',()=>{
       const p=getProfile(b.dataset.btEdit);if(p)openBetTableBuilder({id:p.id,key:b.dataset.btEdit,label:p.label,note:p.note,tiers:p.tiers});}));
@@ -3645,6 +3681,9 @@ function openBetTableBuilder(profile){
   const startTiers=(profile&&profile.tiers&&profile.tiers.length)?profile.tiers:[{denoms:[],levels:[]}];
   openSheet(profile&&profile.id?'Edit bet table':'New bet table',`
     <div class="muted" style="font-size:12px;margin-bottom:8px;">Enter a machine's bet menu — the denominations and the credit bet levels you can pick. The ladder rebuilds to the closest bet on this machine, leaning toward a higher denomination (bigger jackpots) when one is close, and keeps rungs distinct wherever the menu allows.</div>
+    ${(DRIVE||MOCK)?`<button class="btn" id="bt-scan" type="button" style="width:100%;">📷 Scan the machine's screens</button>
+    <input type="file" id="bt-scan-file" accept="image/*" capture="environment" multiple style="display:none;">
+    <div class="muted" style="font-size:11px;margin:5px 0 12px;">Shoot one photo per denomination (tap a denom, then snap its bet tiles). I'll read them all and fill this in for you to check.</div>`:''}
     <label class="field">Machine name</label>
     <input id="bt-name" placeholder="Hot Pot · Dancing Drums · 88 Fortunes" value="${esc(profile?profile.label:'')}" autocomplete="off">
     <div id="bt-tiers">${startTiers.map(tierCard).join('')}</div>
@@ -3670,6 +3709,26 @@ function openBetTableBuilder(profile){
       const rm=e.target.closest('[data-tier-rm]');if(rm){if(tiersEl.querySelectorAll('.bt-tier').length>1)rm.closest('.bt-tier').remove();else toast('Keep at least one group.');refresh();}});
     tiersEl.addEventListener('input',e=>{if(e.target.classList.contains('bt-levels'))refresh();});
     refresh();
+    const scanBtn=document.getElementById('bt-scan');
+    if(scanBtn){const fileInput=document.getElementById('bt-scan-file');
+      scanBtn.addEventListener('click',()=>fileInput.click());
+      fileInput.addEventListener('change',async()=>{
+        const files=[...fileInput.files];if(!files.length)return;
+        scanBtn.disabled=true;const orig=scanBtn.textContent;
+        scanBtn.textContent='Reading '+files.length+' photo'+(files.length>1?'s':'')+'…';
+        try{
+          const r=await scanMachine(files);
+          if(!r||!r.ok){toast((r&&r.message)||'Couldn’t read those photos.');return;}
+          const tiers=denomsToTiers(r.denoms);
+          if(!tiers.length){toast('No bet screens found — try clearer, straight-on shots.');return;}
+          const nameEl=document.getElementById('bt-name');
+          if(r.machine_name&&!nameEl.value.trim())nameEl.value=r.machine_name;
+          tiersEl.innerHTML=tiers.map(tierCard).join('');refresh();
+          const dn=tiers.reduce((n,t)=>n+t.denoms.length,0);
+          toast('Read '+dn+' denomination'+(dn>1?'s':'')+' — review and Save.');
+        }catch(e){toast('Scan failed: '+((e&&e.message)||e));}
+        finally{scanBtn.disabled=false;scanBtn.textContent=orig;fileInput.value='';}
+      });}
     document.getElementById('bt-save').addEventListener('click',async()=>{
       const name=document.getElementById('bt-name').value.trim();
       if(!name)return toast('Give the machine a name.');
