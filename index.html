@@ -812,7 +812,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.62';
+const APP_VERSION='0.9.63';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -1749,26 +1749,39 @@ document.addEventListener('click',e=>{if(e.target.closest('[data-open-settings]'
 // if none). Normal (favorite/standalone) tiles show the game name with the variant as sub.
 function favChip(g,asVariant){
   const art=g.image_url&&g.image_url.indexOf('mock://')!==0;
-  const hide=!!g.hide_name; // "Hide name on tile" — art-only (a standalone game has no variant count)
-  const name=(asVariant&&g.variant)?g.variant:g.name;
-  const sub=asVariant
-    ?(g.variant_note?esc(g.variant_note):'')
-    :(g.variant?esc(g.variant):(g.default_bet!=null?money(g.default_bet)+' bet':catLabel(g.category)));
+  // "Hide name on tile" hides only the (often repeated) CORE name. The VARIANT name is what tells
+  // tiles apart, so it ALWAYS shows — otherwise several art-only variants of one core are a guessing game.
+  const hide=!!g.hide_name;
+  const isVar=asVariant&&!!g.variant;
+  // The label the tile actually shows. When hidden: a variant tile keeps its variant; a standalone that
+  // has a variant promotes the variant to the label (its core is the hidden part); a plain game shows nothing.
+  let label,sub;
+  if(hide){
+    if(isVar){label=g.variant;sub=g.variant_note?esc(g.variant_note):'';}
+    else if(g.variant){label=g.variant;sub='';}
+    else {label='';sub='';}
+  } else {
+    label=isVar?g.variant:g.name;
+    sub=asVariant
+      ?(g.variant_note?esc(g.variant_note):'')
+      :(g.variant?esc(g.variant):(g.default_bet!=null?money(g.default_bet)+' bet':catLabel(g.category)));
+  }
+  const showText=!!label; // only truly nameless when hidden with no variant to show
   const subHtml=sub?`<div class="fc-sub">${sub}</div>`:'';
   if(art){
     // g.art_bg is a manual override (Auto/Black/White); when unset, data-arturl drives auto-detect.
     const attrs=g.art_bg
       ?`style="background-image:url(&quot;${g.image_url}&quot;);background-color:${esc(g.art_bg)};"`
       :`data-arturl="${esc(g.image_url)}" style="background-image:url(&quot;${g.image_url}&quot;)"`;
-    if(hide)return `<div class="fast-chip has-art noname" data-game="${g.id}" ${attrs}></div>`;
+    if(!showText)return `<div class="fast-chip has-art noname" data-game="${g.id}" ${attrs}></div>`;
     return `<div class="fast-chip has-art" data-game="${g.id}" ${attrs}>
       <div class="fc-scrim"></div>
-      <div class="fc-text"><div class="fc-name">${esc(name)}</div>${subHtml}</div></div>`;
+      <div class="fc-text"><div class="fc-name">${esc(label)}</div>${subHtml}</div></div>`;
   }
-  if(hide)return `<div class="fast-chip noname-plain" data-game="${g.id}"><div class="fc-cat">${catIcon(g.category)}</div></div>`;
+  if(!showText)return `<div class="fast-chip noname-plain" data-game="${g.id}"><div class="fc-cat">${catIcon(g.category)}</div></div>`;
   return `<div class="fast-chip" data-game="${g.id}">
     <div class="fc-cat">${catIcon(g.category)}</div>
-    <div class="fc-name">${esc(name)}</div>
+    <div class="fc-name">${esc(label)}</div>
     ${subHtml}</div>`;
 }
 // Group games by core name (g.name), preserving first-seen order.
@@ -3462,7 +3475,7 @@ function openGameSheet(game,seed){
       </div>
     </div>
     <div class="toggle-row"><div class="tr-label">Hide name on tile
-      <div class="set-sub" style="margin-top:2px;">Show just the art on the Today tile. A game with variants still shows its “N variants” count.</div></div>
+      <div class="set-sub" style="margin-top:2px;">Hides the game name on the Today tile. The variant name (or a core’s “N variants” count) still shows, so tiles stay easy to tell apart.</div></div>
       <div class="switch${g.hide_name?' on':''}" id="g-hidename"></div></div>
     ${game?`<button class="btn" id="g-dupe" style="width:100%;margin-top:12px;" title="Start a new game with these settings, Variant left blank">Duplicate as new variant</button>`:''}
     <div class="sheet-actions"><button class="btn" data-close-sheet>Cancel</button>
