@@ -570,6 +570,7 @@
   .cmp-navrow{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:6px 0 10px;}
   .cmp-nav{flex:0 0 auto;width:42px;padding:8px 0;border-radius:10px;font-size:18px;font-weight:800;cursor:pointer;
     color:var(--text);background:var(--panel2);border:1px solid var(--border);}
+  .cmp-nav:disabled{opacity:.28;cursor:default;}
   .cmp-month{flex:1;text-align:center;font-size:15px;font-weight:800;}
   .cmp-wdhead{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:4px;}
   .cmp-wdhead div{text-align:center;font-size:11px;font-weight:700;color:var(--muted);}
@@ -812,7 +813,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.65';
+const APP_VERSION='0.9.66';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -2817,7 +2818,27 @@ function compDone(comp){
   const next=compNextDate(comp);
   return !(/^\d{4}-/.test(next)&&next>state.today);
 }
+// An offer is EXPIRED when its window has an end date that's already passed — it can never
+// come round again, so it's deleted outright (not just hidden like used/done comps).
+function compExpired(comp){return !!(comp.valid_to && comp.valid_to < state.today);}
+// Auto-purge expired offers whenever the Comps tab is shown. Runs the deletes through the
+// normal write path (so Drive/legacy both persist) and re-renders once when anything went.
+let _purgingComps=false;
+async function purgeExpiredComps(){
+  if(_purgingComps)return;
+  const dead=(state.comps||[]).filter(compExpired);
+  if(!dead.length)return;
+  _purgingComps=true;
+  try{
+    let last=null;
+    for(const c of dead) last=await api('ct-write',{action:'delete-comp',id:c.id});
+    if(last&&last.ok){applyBootstrap(last.bootstrap);cacheState();}
+    toast(`Removed ${dead.length} expired ${dead.length===1?'offer':'offers'}`);
+    if(currentTab==='comps')renderComps();
+  }finally{_purgingComps=false;}
+}
 function renderComps(){
+  purgeExpiredComps();
   const body=document.getElementById('comps-body');
   const comps=state.comps||[];
   const availN=comps.filter(c=>compAvailable(c,state.today)).length;
@@ -2902,6 +2923,7 @@ function renderCompsCalendar(){
   const fcomps=comps.filter(compFilterPass);
   let weeksHtml='';
   for(let cur=start;cur<=end;cur=addDays(cur,7)){
+    if(addDays(cur,6)<state.today)continue; // hide weeks already fully in the past
     const days=[];for(let i=0;i<7;i++)days.push(addDays(cur,i));
     // Row 1: day numbers (faint for adjacent-month days, highlight today).
     let row1='';
@@ -2943,7 +2965,7 @@ function renderCompsCalendar(){
     <div class="cmp-flabel">People</div><div class="gcat-row">${people.map(perChip).join('')}</div>
   </div>
   <div class="cmp-navrow">
-    <button type="button" class="cmp-nav" data-cmonth="-1">‹</button>
+    <button type="button" class="cmp-nav" data-cmonth="-1"${(()=>{const [ty,tm]=state.today.split('-').map(Number);return (y<ty||(y===ty&&m<=tm))?' disabled':'';})()}>‹</button>
     <div class="cmp-month">${esc(monthName)}</div>
     <button type="button" class="cmp-nav" data-cmonth="1">›</button>
   </div>
