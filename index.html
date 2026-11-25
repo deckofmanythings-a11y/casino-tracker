@@ -215,8 +215,6 @@
   .lad-mode b{font-weight:800;color:var(--text);}
   .lad-mode.on{background:color-mix(in srgb,var(--gold) 16%,var(--panel));border-color:var(--gold-dim);}
   .lad-mode.on b{color:var(--gold-dim);}
-  .lad-mode-row{display:flex;align-items:center;gap:6px;align-self:flex-start;flex-wrap:wrap;}
-  .lad-clear{background:none;border:1px solid var(--border);border-radius:999px;padding:4px 10px;font:inherit;font-size:11px;font-weight:700;color:var(--muted);cursor:pointer;}
   /* ── Bet tables (manager + builder) ── */
   .bt-sec{font-size:12px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin:16px 2px 8px;}
   .bt-row{display:flex;align-items:center;gap:8px;padding:8px 0;border-top:1px solid var(--faint);}
@@ -819,7 +817,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.70';
+const APP_VERSION='0.9.71';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -1328,12 +1326,16 @@ function ladderForBalance(balance,profile){
 // An explicit 0 (Survival) is respected — only a missing/invalid value falls back to the start.
 function ladderState(s){const n=LADDER.length-1,cl=v=>{const i=parseInt(v,10);return i>=0?Math.min(i,n):LADDER_START;};
   return {rung:cl(s.ladder_rung),lock:cl(s.ladder_lock)};}
-// "My ladder" — a device-local chosen ladder {key, balance} set from a ladder's preview via
-// "Set as my ladder". When set, the live widget shows THAT ladder at THAT balance instead of the
-// per-game default. Clearing it falls back to the per-game $100/$500 behavior.
-function getMyLadder(){try{const o=JSON.parse(localStorage.getItem('ct_my_ladder'));if(o&&o.key&&o.balance>0)return o;}catch(_){}return null;}
-function setMyLadder(key,balance){try{localStorage.setItem('ct_my_ladder',JSON.stringify({key,balance:Math.round(balance)}));}catch(_){}}
-function clearMyLadder(){try{localStorage.removeItem('ct_my_ladder');}catch(_){}}
+// A slot session chooses its ladder at start (session.bet_profile) and the ladder scales to that
+// session's OPENING buy-in. These resolve both; an older session with neither falls back sensibly.
+function sessionLadderKey(s){
+  if(s&&s.bet_profile)return s.bet_profile==='standard'?null:s.bet_profile;
+  return ladderProfileKey(s);   // legacy: fall back to the game's bet_profile
+}
+function sessionOpeningBuyin(s){
+  const o=num(s&&s.opening_buyin);if(o>0)return o;
+  const t=num(s&&s.buy_in_total);return t>0?t:100;
+}
 function ladderWidget(s){
   const open=ladderOpen();
   return `<div class="ladder${open?'':' collapsed'}" data-ladder="${s.id}">
@@ -1344,10 +1346,7 @@ function ladderWidget(s){
     </button>
     <div class="lad-body">
       <div class="lad-current"></div>
-      <div class="lad-mode-row">
-        <button type="button" class="lad-mode" data-lad-mode></button>
-        <button type="button" class="lad-clear" data-lad-clear title="Back to the default $100 ladder" style="display:none;">✕ my ladder</button>
-      </div>
+      <button type="button" class="lad-mode" data-lad-mode></button>
       <div class="lad-wheel">
         <button type="button" class="lad-step" data-step="-1" aria-label="Down a rung">▼</button>
         <input type="range" class="lad-slider" min="0" max="${LADDER.length-1}" step="1" value="0" aria-label="Ladder rung">
@@ -1363,16 +1362,11 @@ function ladderWidget(s){
 // Paint the dynamic parts (current rung card, slider position, lock-up readout, button states)
 // from the session's rung/lock. Called on bind and after every interaction.
 function renderLadderDynamic(root,s){
-  const ml=getMyLadder();
-  let pk,balance,prof,tbl;
-  if(ml){
-    pk=ml.key;balance=ml.balance;prof=(pk&&!isBaseKey(pk))?getProfile(pk):null;
-    if(pk&&!isBaseKey(pk)&&!prof)pk='standard';                 // my-ladder machine was deleted → base
-    tbl=ladderForBalance(balance,prof);
-  }else{
-    pk=ladderProfileKey(s);balance=(pk==='high_limit')?500:100;
-    prof=(pk&&!isBaseKey(pk))?getProfile(pk):null;tbl=ladderTable(s);
-  }
+  let pk=sessionLadderKey(s);                                   // null (Standard) or a machine key
+  const balance=sessionOpeningBuyin(s);                         // scales the ladder to the opening buy-in
+  let prof=(pk&&!isBaseKey(pk))?getProfile(pk):null;
+  if(pk&&!isBaseKey(pk)&&!prof)pk=null;                         // chosen machine table was deleted → Standard
+  const tbl=ladderForBalance(balance,prof);
   const {rung,lock}=ladderState(s),r=tbl[rung],L=tbl[lock];
   const cur=root.querySelector('.lad-current');cur.dataset.zone=r.zone;
   const cr=Number((r.bet/r.denom).toFixed(2)); // credits = bet ÷ denom = the machine's BET / bet button
@@ -1380,13 +1374,11 @@ function renderLadderDynamic(root,s){
   cur.innerHTML=`<div class="lc-top"><span class="lc-name">${esc(r.name)}</span><span class="lc-band">${esc(r.band)}</span></div>
     <div class="lc-bet"><span class="lc-denom">${ladderDenom(r.denom)}</span><span class="lc-attempt">${money(r.bet)} <small>/ attempt</small></span><span class="lc-cr" title="Bet ÷ denom — press bet-up until the machine reads this">${cr} <small>credits</small></span></div>
     ${note?`<div class="lc-note">${esc(note)}</div>`:''}`;
-  const isHL=pk==='high_limit';
-  const modeName=isHL?'High Limit':(prof?prof.short:'Standard');
+  const modeName=prof?prof.short:'Standard';
   const mb=root.querySelector('[data-lad-mode]');
-  if(mb){mb.classList.toggle('on',!!(prof||isHL||ml));
-    mb.innerHTML=`Bet mode: <b>${esc(modeName)}</b>`;}
-  const cb=root.querySelector('[data-lad-clear]');if(cb)cb.style.display=ml?'':'none';
-  const ps=root.querySelector('.lad-persess');if(ps)ps.textContent=`$${Number(balance).toLocaleString()} / attempt`;
+  if(mb){mb.classList.toggle('on',!!prof);
+    mb.innerHTML=`Ladder: <b>${esc(modeName)}</b>`;}
+  const ps=root.querySelector('.lad-persess');if(ps)ps.textContent=`$${Number(balance).toLocaleString()} buy-in`;
   const sl=root.querySelector('.lad-slider');if(sl.value!==String(rung))sl.value=String(rung);
   const amt=root.querySelector('.ll-amt'),sub=root.querySelector('.ll-sub');
   if(L.lock>0){amt.innerHTML=`${money(L.lock)}<span class="ll-unit"> locked up</span>`;
@@ -1396,29 +1388,17 @@ function renderLadderDynamic(root,s){
   root.querySelector('[data-step="-1"]').disabled=rung<=0;
   root.querySelector('[data-step="1"]').disabled=rung>=LADDER.length-1;
 }
-// Cycle the ladder's bet mode: Standard → High Limit → each machine table → back. For a catalog
-// game this marks the GAME (bet_profile), so it's remembered everywhere and mirrored in the Games
-// tab; for an ad-hoc session it's kept as a local per-session override.
+// Cycle THIS session's ladder: Standard → each machine table → back (balance stays the opening
+// buy-in). Persists on the session so it sticks for this session only.
 async function cycleLadderProfile(root,s){
-  const order=[null,'high_limit',...profileKeys()];
-  // When a "my ladder" is active, cycling switches which ladder it is but keeps your balance.
-  const ml=getMyLadder();
-  if(ml){
-    const cur=ml.key==='standard'?null:ml.key;
-    const next=order[(order.indexOf(cur)+1)%order.length];
-    setMyLadder(next||'standard',ml.balance);renderLadderDynamic(root,s);return;
-  }
-  const next=order[(order.indexOf(ladderProfileKey(s))+1)%order.length];
-  const g=gameForSession(s);
-  if(g){
-    const prev=g.bet_profile;g.bet_profile=next||'standard';renderLadderDynamic(root,s); // optimistic
-    const r=await api('ct-write',{action:'set-game-bet-profile',id:g.id,bet_profile:next||'standard'});
-    if(r&&r.ok){applyBootstrap(r.bootstrap);cacheState();}
-    else{g.bet_profile=prev;renderLadderDynamic(root,s);toast('Couldn’t save bet mode.');}
-  }else{
-    try{if(next)localStorage.setItem('ct_lprof_'+s.id,next);else localStorage.removeItem('ct_lprof_'+s.id);}catch(_){}
-    renderLadderDynamic(root,s);
-  }
+  const order=[null,...profileKeys()];
+  const cur=sessionLadderKey(s);
+  const next=order[(order.indexOf(cur)+1)%order.length];
+  const prev=s.bet_profile;
+  s.bet_profile=next||'standard';renderLadderDynamic(root,s);   // optimistic
+  const r=await api('ct-write',{action:'save-session',id:s.id,bet_profile:next||'standard'});
+  if(r&&r.ok){cacheState();}
+  else{s.bet_profile=prev;renderLadderDynamic(root,s);toast('Couldn’t save the ladder.');}
 }
 // Persist rung/lock as a partial save-session (fire-and-forget; it's a play aid, so a rare
 // failure just means it reloads from the last saved value next time).
@@ -1445,8 +1425,6 @@ function bindLadder(root,s){
     const {lock}=ladderState(s);if(lock<=0)return;
     s.ladder_lock=lock-1;renderLadderDynamic(root,s);saveLadder(s);});
   root.querySelector('[data-lad-mode]').addEventListener('click',()=>cycleLadderProfile(root,s));
-  const clr=root.querySelector('[data-lad-clear]');
-  if(clr)clr.addEventListener('click',()=>{clearMyLadder();renderLadderDynamic(root,s);toast('Back to the default ladder.');});
   root.querySelector('[data-lad-toggle]').addEventListener('click',()=>{
     root.classList.toggle('collapsed');
     try{localStorage.setItem('ct_ladder_open',root.classList.contains('collapsed')?'0':'1');}catch(_){}});
@@ -2287,30 +2265,52 @@ function bindCrapsBonus(pre){
 }
 
 // ── New / edit session ──────────────────────────────────────────────────────
-function openSessionSheet(game){
-  const g=game||{};
-  const cat=g.category||'slot';
+// Attack Ladder <select> options for a slot session: Standard + every machine table + "Add a New…".
+function ladderSelectOptions(sel){
+  let html='<option value="standard"'+((!sel||sel==='standard')?' selected':'')+'>Standard (no machine)</option>';
+  profileKeys().forEach(k=>{const p=getProfile(k);if(!p)return;
+    html+='<option value="'+esc(k)+'"'+(sel===k?' selected':'')+'>'+esc(p.label)+'</option>';});
+  html+='<option value="__new">➕ Add a New Ladder…</option>';
+  return html;
+}
+// `prefill` carries the in-progress field values back after the "Add a New Ladder" builder detour.
+function openSessionSheet(game,prefill){
+  const g=game||{},pf=prefill||{};
+  const cat=pf.category||g.category||'slot';
+  const vName=pf.name!==undefined?pf.name:(g.name||'');
+  const vVar=pf.variant!==undefined?pf.variant:(g.variant||'');
+  const vStrat=pf.strategy!==undefined?pf.strategy:(g.strategy||'');
+  const vDenom=pf.denom!==undefined?pf.denom:g.default_denom;
+  const vBet=pf.bet!==undefined?pf.bet:g.default_bet;
+  const vBuyin=pf.buyin!==undefined?pf.buyin:g.default_buyin;
+  const vCasino=pf.casino!==undefined?pf.casino:(state.active_trip?.casino||'');
+  const defLadder=pf.ladder||g.bet_profile||'standard';
   openSheet(g.name?('Start: '+g.name):'New session',`
     <label class="field">Name / Core game</label>
-    <input id="f-name" placeholder="e.g. Lightning Link" value="${esc(g.name||'')}" list="dl-cores" autocomplete="off">
+    <input id="f-name" placeholder="e.g. Lightning Link" value="${esc(vName)}" list="dl-cores" autocomplete="off">
     <label class="field" id="f-variant-label">Variant (optional)</label>
-    <input id="f-variant" placeholder="e.g. Happy &amp; Prosperous" value="${esc(g.variant||'')}" list="dl-variants" autocomplete="off">
-    <div id="f-strategy-wrap"><label class="field">Strategy (optional)</label><textarea id="f-strategy" placeholder="e.g. Pass line with odds and two Come bets with odds at all times">${esc(g.strategy||'')}</textarea></div>
+    <input id="f-variant" placeholder="e.g. Happy &amp; Prosperous" value="${esc(vVar)}" list="dl-variants" autocomplete="off">
+    <div id="f-strategy-wrap"><label class="field">Strategy (optional)</label><textarea id="f-strategy" placeholder="e.g. Pass line with odds and two Come bets with odds at all times">${esc(vStrat)}</textarea></div>
     ${gameDatalists()}
     <label class="field">Type</label>
     <div class="seg" id="f-cat">${segMarkup(cat)}</div>
     <div id="f-slotfields" style="${isSlotty(cat)?'':'display:none'}">
       <div class="row2">
-        <div><label class="field">Denomination</label>${denomSelect('f-denom',g.default_denom)}</div>
-        <div><label class="field">Base bet ($/spin)</label><input id="f-bet" inputmode="decimal" placeholder="2.50" value="${g.default_bet??''}"></div>
+        <div><label class="field">Denomination</label>${denomSelect('f-denom',vDenom)}</div>
+        <div><label class="field">Base bet ($/spin)</label><input id="f-bet" inputmode="decimal" placeholder="2.50" value="${vBet??''}"></div>
       </div>
       <div class="bet30" id="f-bet30"></div>
     </div>
     ${crapsBonusMarkup('f',null)}
     <label class="field">Opening buy-in</label>
-    <div class="money-input"><span class="dollar">$</span><input id="f-buyin" inputmode="decimal" placeholder="100" value="${g.default_buyin??''}"></div>
+    <div class="money-input"><span class="dollar">$</span><input id="f-buyin" inputmode="decimal" placeholder="100" value="${vBuyin??''}"></div>
+    <div id="f-ladder-wrap" style="${cat==='slot'?'':'display:none'}">
+      <label class="field">Attack Ladder</label>
+      <select id="f-ladder">${ladderSelectOptions(defLadder)}</select>
+      <div class="muted" style="font-size:11px;margin-top:4px;">Scales to your opening buy-in. “Add a New Ladder” opens the editor — scan the machine right there.</div>
+    </div>
     <label class="field">Casino (optional)</label>
-    ${casinoSelect('f-casino', state.active_trip?.casino||'')}
+    ${casinoSelect('f-casino', vCasino)}
     <div class="casino-note" id="f-casino-note"></div>
     <div class="sheet-actions">
       <button class="btn" data-close-sheet>Cancel</button>
@@ -2329,21 +2329,40 @@ function openSessionSheet(game){
       selCat=b.dataset.cat;
       document.querySelectorAll('#f-cat button').forEach(x=>x.classList.toggle('sel',x===b));
       document.getElementById('f-slotfields').style.display=isSlotty(selCat)?'':'none';
+      document.getElementById('f-ladder-wrap').style.display=selCat==='slot'?'':'none';
       applyStrategyUI('f',selCat);
       applyCents(document.getElementById('f-buyin'),usesCents(selCat));
     }));
+    // "Add a New Ladder" → capture the half-filled form, open the builder (with OCR), and return here.
+    const ladSel=document.getElementById('f-ladder');
+    let prevLadder=ladSel?ladSel.value:'standard';
+    const cap=()=>({name:document.getElementById('f-name').value,variant:document.getElementById('f-variant').value,
+      strategy:document.getElementById('f-strategy')?.value||'',category:selCat,
+      denom:document.getElementById('f-denom')?.value,bet:document.getElementById('f-bet')?.value,
+      buyin:document.getElementById('f-buyin').value,casino:document.getElementById('f-casino').value,ladder:prevLadder});
+    if(ladSel)ladSel.addEventListener('change',()=>{
+      if(ladSel.value==='__new'){ladSel.value=prevLadder;const pf2=cap();
+        openBetTableBuilder(null,(savedKey)=>openSessionSheet(game,{...pf2,ladder:savedKey||prevLadder}));return;}
+      prevLadder=ladSel.value;
+    });
     const startBtn=document.getElementById('f-start');
     startBtn.addEventListener('click',async()=>{
       if(startBtn.disabled)return;
       startBtn.disabled=true;startBtn.textContent='Starting…';
       const _fnm=document.getElementById('f-name').value.trim()||g.name||'Untitled';
       const _fvr=document.getElementById('f-variant').value.trim();
+      const isSlot=selCat==='slot';
+      const ladVal=(isSlot&&ladSel)?ladSel.value:null;
+      const ladderKey=(ladVal&&ladVal!=='__new')?ladVal:'standard';
+      // Remember this ladder as the game's default for next time (catalog games only).
+      if(g.id&&isSlot)try{await api('ct-write',{action:'set-game-bet-profile',id:g.id,bet_profile:ladderKey});}catch(_){}
       const payload={action:'save-session',client_key:clientKey,
         game_id:g.id||null,game_name:_fvr?`${_fnm} — ${_fvr}`:_fnm,
         category:selCat,casino:document.getElementById('f-casino').value.trim()||null,
         denom:isSlotty(selCat)?document.getElementById('f-denom').value:null,
         bet_size:isSlotty(selCat)?document.getElementById('f-bet').value:null,
         buy_in:document.getElementById('f-buyin').value||null,
+        bet_profile:isSlot?ladderKey:undefined,
         strategy:(selCat==='bubble_craps'?(document.getElementById('f-strategy').value.trim()||null):null),
         ...readCrapsBonus('f',selCat),
         trip_id:state.active_trip?.id||null,session_date:state.today};
@@ -3775,22 +3794,20 @@ function ladderPreviewHTML(p){
   if(!profileOptions(p).length)return '<div class="muted" style="font-size:12px;padding:6px 2px;">Pick a denomination and type in some bet levels to see the ladder.</div>';
   return ladderTableHTML(buildProfileLadder(p));
 }
-// View one ladder: a bankroll base ('standard'/'high_limit') or a machine table (its key). A
-// "Starting balance" input rescales the whole ladder on the fly (and, for a machine, snaps every
-// rung to that machine's denominations) so you can see, e.g., $300 on Hot Pots before you sit down.
+// View one ladder: a bankroll base ('standard'/'high_limit') or a machine table (its key). The
+// balance here is just a what-if preview — the REAL buy-in is set when you start a slot session,
+// which is what the live ladder scales to. For a machine, every rung snaps to its denominations.
 function openLadderPreviewSheet(key){
   let title,note,profile=null,defBal;
   if(isBaseKey(key)){const b=BASE_LADDERS[key];title=b.label;note=`${b.label} bankroll ladder`;defBal=b.buyin;}
   else{const p=getProfile(key);if(!p)return;profile=p;title=p.label;note=[p.label,p.note].filter(Boolean).join(' · ');defBal=100;}
   openSheet(title,`${note?`<div class="muted" style="font-size:12px;margin-bottom:10px;">${esc(note)}</div>`:''}
-    <label class="field">Starting balance</label>
+    <label class="field">Preview at balance</label>
     <div class="lad-bal-row"><span class="lad-bal-pfx">$</span><input id="lad-bal" inputmode="numeric" value="${defBal}" autocomplete="off"></div>
-    <div class="muted" style="font-size:11px;margin:5px 0 2px;">Rescales the whole ladder to this buy-in${profile?'’s bets, snapped to this machine’s denominations':''}.</div>
+    <div class="muted" style="font-size:11px;margin:5px 0 2px;">What-if only — your real buy-in is set when you start a slot session.</div>
     <div id="lad-name" class="bpl-head" style="margin-top:12px;"></div>
     <div class="bpl-wrap" id="lad-prev" style="margin-top:4px;"></div>
-    <button class="btn primary" id="lad-setmine" style="width:100%;margin-top:12px;">⚔️ Set as my ladder</button>
-    <div class="muted" style="font-size:11px;margin-top:5px;">Makes the live Attack Ladder use this ladder at this balance while you play.</div>
-    <div class="sheet-actions"><button class="btn" data-close-sheet>Done</button></div>`,()=>{
+    <div class="sheet-actions"><button class="btn primary" data-close-sheet>Done</button></div>`,()=>{
     const inp=document.getElementById('lad-bal'),nameEl=document.getElementById('lad-name'),prev=document.getElementById('lad-prev');
     const curBal=()=>{let bal=parseFloat(String(inp.value).replace(/[^0-9.]/g,''));return (bal>0)?bal:defBal;};
     const paint=()=>{const bal=curBal();const lad=ladderForBalance(bal,profile);
@@ -3799,14 +3816,6 @@ function openLadderPreviewSheet(key){
     inp.addEventListener('input',paint);
     inp.addEventListener('focus',()=>inp.select());
     paint();
-    document.getElementById('lad-setmine').addEventListener('click',()=>{
-      const bal=curBal();setMyLadder(key,bal);
-      // Repaint any live ladder widget currently on screen so it reflects the choice immediately.
-      document.querySelectorAll('.ladder').forEach(el=>{const sid=el.dataset.ladder;
-        const s=(state.sessions||[]).find(x=>x.id===sid)||(state.carryover_open||[]).find(x=>x.id===sid);
-        if(s)renderLadderDynamic(el,s);});
-      closeSheet();toast(`Your ladder: $${Math.round(bal).toLocaleString()} ${isBaseKey(key)?BASE_LADDERS[key].label:(getProfile(key)?.short||'')}`.trim());
-    });
   });}
 
 function openBetTablesSheet(){
@@ -3846,7 +3855,9 @@ function openBetTablesSheet(){
 }
 
 // Build/edit one table. `profile` null = new; else {id?,key?,label,note,tiers}. No id ⇒ saves new.
-function openBetTableBuilder(profile){
+// `returnTo(key|null)` (optional) is called instead of reopening the manager — used by the slot
+// session "Add a New Ladder" detour to come back to the session sheet with the new ladder selected.
+function openBetTableBuilder(profile,returnTo){
   const tierCard=(tier)=>{const sel=new Set((tier&&tier.denoms||[]).map(num));
     const chips=DENOM_PALETTE.map(d=>`<button type="button" class="bt-denom${sel.has(d)?' sel':''}" data-denom="${d}">${ladderDenom(d)}</button>`).join('');
     const levels=(tier&&tier.levels)?tier.levels.join(' '):'';
@@ -3868,8 +3879,9 @@ function openBetTableBuilder(profile){
     <label class="field" style="margin-top:12px;">Note (optional)</label>
     <input id="bt-note" placeholder="e.g. ≥88 credits = all jackpots eligible" value="${esc(profile&&profile.note?profile.note:'')}" autocomplete="off">
     <div class="bpl-wrap"><div class="bpl-head">⚔️ Attack Ladder preview</div><div id="bt-preview"></div></div>
-    <div class="sheet-actions"><button class="btn" data-close-sheet>Cancel</button><button class="btn primary" id="bt-save">Save table</button></div>
+    <div class="sheet-actions"><button class="btn" id="bt-cancel">Cancel</button><button class="btn primary" id="bt-save">Save table</button></div>
   `,()=>{
+    document.getElementById('bt-cancel').addEventListener('click',()=>{if(returnTo)returnTo(null);else closeSheet();});
     const tiersEl=document.getElementById('bt-tiers');
     const readProfile=()=>{const tiers=[];
       tiersEl.querySelectorAll('.bt-tier').forEach(tc=>{
@@ -3915,7 +3927,10 @@ function openBetTableBuilder(profile){
       if(profile&&profile.id)payload.id=profile.id;
       else payload.key=('u_'+(name.toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'').slice(0,22)||'table')+'_'+Math.random().toString(36).slice(2,6)).slice(0,40);
       const r=await api('ct-write',payload);
-      if(r&&r.ok){applyBootstrap(r.bootstrap);cacheState();renderGames();openBetTablesSheet();toast('Saved.');}
+      if(r&&r.ok){applyBootstrap(r.bootstrap);cacheState();renderGames();
+        const savedKey=payload.key||(profile&&profile.key);
+        if(returnTo)returnTo(savedKey);else openBetTablesSheet();
+        toast('Saved.');}
       else toast((r&&r.error)||'Couldn’t save.');});
   });
 }
@@ -4067,11 +4082,13 @@ function mockWrite(b){
       if('craps_tall' in b)s.craps_tall=b.craps_tall===true;
       if('ladder_rung' in b)s.ladder_rung=b.ladder_rung==null?null:Math.max(0,Math.round(num(b.ladder_rung)));
       if('ladder_lock' in b)s.ladder_lock=b.ladder_lock==null?null:Math.max(0,Math.round(num(b.ladder_lock)));
+      if('bet_profile' in b)s.bet_profile=b.bet_profile||null;
       if('cash_out' in b)s.cash_out=b.cash_out===''||b.cash_out==null?null:num(b.cash_out);
     }else{
       if(b.client_key&&mockDB.sessions.some(s=>s.client_key===b.client_key))return; // idempotent
       const s={id:mockId('s'),account_id:'me',client_key:b.client_key||null,trip_id:b.trip_id||null,game_id:b.game_id||null,game_name:b.game_name||'Untitled',
       category:b.category||'slot',casino:b.casino||null,denom:b.denom?num(b.denom):null,bet_size:b.bet_size?num(b.bet_size):null,
+      bet_profile:b.bet_profile||null,opening_buyin:b.buy_in?num(b.buy_in):null,
       notes:null,strategy:b.strategy??null,craps_small:b.craps_small===true,craps_all:b.craps_all===true,craps_tall:b.craps_tall===true,buy_in_total:0,cash_out:'cash_out' in b?(b.cash_out?num(b.cash_out):null):null,session_date:b.session_date||todayLocal(),
       started_at:new Date().toISOString(),buyins:[],bonuses:[]};
       if(b.buy_in){s.buyins.push({id:mockId('b'),session_id:s.id,amount:num(b.buy_in)});mockRecompute(s);}
