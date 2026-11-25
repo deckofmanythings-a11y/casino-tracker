@@ -238,6 +238,7 @@
   .bpl-table th:last-child,.bpl-table td:last-child{text-align:right;}
   .bpl-table td{padding:5px 0;border-top:1px solid var(--faint);}
   .bpl-rung{font-weight:600;}
+  .bpl-band{font-weight:400;color:var(--muted);font-size:11px;font-variant-numeric:tabular-nums;margin-top:1px;}
   .bpl-combo{color:var(--muted);font-variant-numeric:tabular-nums;}
   .bpl-bet{font-weight:800;font-variant-numeric:tabular-nums;}
   .bpl-bet.dup{color:var(--muted);}
@@ -813,7 +814,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.67';
+const APP_VERSION='0.9.68';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -1291,8 +1292,12 @@ function ladderTable(s){const k=ladderProfileKey(s);if(k==='high_limit')return L
 function ladderOpen(){try{return localStorage.getItem('ct_ladder_open')==='1';}catch(_){return false;}}
 // A fresh session (no stored rung yet) starts on Cruise — the ~$100 buy-in level.
 const LADDER_START=LADDER.findIndex(r=>r.name==='Cruise');
-// A ladder's name = [buy-in] / [credits at the buy-in rung] / [denom at the buy-in rung].
-function ladderFormulaName(buyin,tbl){const r=tbl[LADDER_START];return '$'+Number(buyin).toLocaleString()+'/'+Math.round(r.bet/r.denom)+'/'+ladderDenom(r.denom);}
+// A ladder's name = [buy-in] / [lowest rung credits]/[denom] (Start: [buy-in rung credits]/[denom]).
+// Main part = the bottom rung (Survival, index 0); the parenthetical = the buy-in/start rung (Cruise).
+function ladderFormulaName(buyin,tbl){
+  const cd=r=>Math.round(r.bet/r.denom)+'/'+ladderDenom(r.denom);
+  return '$'+Number(buyin).toLocaleString()+'/'+cd(tbl[0])+' (Start: '+cd(tbl[LADDER_START])+')';
+}
 // Normalize a session's stored rung/lock to valid in-range indices; unset ⇒ Cruise.
 // An explicit 0 (Survival) is respected — only a missing/invalid value falls back to the start.
 function ladderState(s){const n=LADDER.length-1,cl=v=>{const i=parseInt(v,10);return i>=0?Math.min(i,n):LADDER_START;};
@@ -3686,7 +3691,7 @@ function profileSummary(p){const d=new Set();(p.tiers||[]).forEach(t=>(t.denoms|
 // A ladder (array of rungs) as a compact table (builder preview + the view sheet).
 function ladderRowsHTML(lad){return lad.map((r,i)=>{const cr=Math.round(r.bet/r.denom);
     const dup=i>0&&r.name!==lad[i-1].name&&Math.abs(r.bet-lad[i-1].bet)<1e-9;
-    return `<tr><td class="bpl-rung">${esc(r.name)}</td><td class="bpl-combo">${ladderDenom(r.denom)} × ${cr}</td><td class="bpl-bet${dup?' dup':''}">${money(r.bet)}</td></tr>`;}).join('');}
+    return `<tr><td class="bpl-rung">${esc(r.name)}<div class="bpl-band">${esc(r.band)}</div></td><td class="bpl-combo">${ladderDenom(r.denom)} × ${cr}</td><td class="bpl-bet${dup?' dup':''}">${money(r.bet)}</td></tr>`;}).join('');}
 function ladderTableHTML(lad){return `<table class="bpl-table"><thead><tr><th>Rung</th><th>Set machine to</th><th>Bet</th></tr></thead><tbody>${ladderRowsHTML(lad)}</tbody></table>`;}
 function ladderPreviewHTML(p){
   if(!profileOptions(p).length)return '<div class="muted" style="font-size:12px;padding:6px 2px;">Pick a denomination and type in some bet levels to see the ladder.</div>';
