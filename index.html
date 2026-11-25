@@ -215,6 +215,8 @@
   .lad-mode b{font-weight:800;color:var(--text);}
   .lad-mode.on{background:color-mix(in srgb,var(--gold) 16%,var(--panel));border-color:var(--gold-dim);}
   .lad-mode.on b{color:var(--gold-dim);}
+  .lad-mode-row{display:flex;align-items:center;gap:6px;align-self:flex-start;flex-wrap:wrap;}
+  .lad-clear{background:none;border:1px solid var(--border);border-radius:999px;padding:4px 10px;font:inherit;font-size:11px;font-weight:700;color:var(--muted);cursor:pointer;}
   /* ── Bet tables (manager + builder) ── */
   .bt-sec{font-size:12px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin:16px 2px 8px;}
   .bt-row{display:flex;align-items:center;gap:8px;padding:8px 0;border-top:1px solid var(--faint);}
@@ -817,7 +819,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.69';
+const APP_VERSION='0.9.70';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -1326,6 +1328,12 @@ function ladderForBalance(balance,profile){
 // An explicit 0 (Survival) is respected — only a missing/invalid value falls back to the start.
 function ladderState(s){const n=LADDER.length-1,cl=v=>{const i=parseInt(v,10);return i>=0?Math.min(i,n):LADDER_START;};
   return {rung:cl(s.ladder_rung),lock:cl(s.ladder_lock)};}
+// "My ladder" — a device-local chosen ladder {key, balance} set from a ladder's preview via
+// "Set as my ladder". When set, the live widget shows THAT ladder at THAT balance instead of the
+// per-game default. Clearing it falls back to the per-game $100/$500 behavior.
+function getMyLadder(){try{const o=JSON.parse(localStorage.getItem('ct_my_ladder'));if(o&&o.key&&o.balance>0)return o;}catch(_){}return null;}
+function setMyLadder(key,balance){try{localStorage.setItem('ct_my_ladder',JSON.stringify({key,balance:Math.round(balance)}));}catch(_){}}
+function clearMyLadder(){try{localStorage.removeItem('ct_my_ladder');}catch(_){}}
 function ladderWidget(s){
   const open=ladderOpen();
   return `<div class="ladder${open?'':' collapsed'}" data-ladder="${s.id}">
@@ -1336,7 +1344,10 @@ function ladderWidget(s){
     </button>
     <div class="lad-body">
       <div class="lad-current"></div>
-      <button type="button" class="lad-mode" data-lad-mode></button>
+      <div class="lad-mode-row">
+        <button type="button" class="lad-mode" data-lad-mode></button>
+        <button type="button" class="lad-clear" data-lad-clear title="Back to the default $100 ladder" style="display:none;">✕ my ladder</button>
+      </div>
       <div class="lad-wheel">
         <button type="button" class="lad-step" data-step="-1" aria-label="Down a rung">▼</button>
         <input type="range" class="lad-slider" min="0" max="${LADDER.length-1}" step="1" value="0" aria-label="Ladder rung">
@@ -1352,7 +1363,16 @@ function ladderWidget(s){
 // Paint the dynamic parts (current rung card, slider position, lock-up readout, button states)
 // from the session's rung/lock. Called on bind and after every interaction.
 function renderLadderDynamic(root,s){
-  const pk=ladderProfileKey(s),prof=pk?getProfile(pk):null,tbl=ladderTable(s);
+  const ml=getMyLadder();
+  let pk,balance,prof,tbl;
+  if(ml){
+    pk=ml.key;balance=ml.balance;prof=(pk&&!isBaseKey(pk))?getProfile(pk):null;
+    if(pk&&!isBaseKey(pk)&&!prof)pk='standard';                 // my-ladder machine was deleted → base
+    tbl=ladderForBalance(balance,prof);
+  }else{
+    pk=ladderProfileKey(s);balance=(pk==='high_limit')?500:100;
+    prof=(pk&&!isBaseKey(pk))?getProfile(pk):null;tbl=ladderTable(s);
+  }
   const {rung,lock}=ladderState(s),r=tbl[rung],L=tbl[lock];
   const cur=root.querySelector('.lad-current');cur.dataset.zone=r.zone;
   const cr=Number((r.bet/r.denom).toFixed(2)); // credits = bet ÷ denom = the machine's BET / bet button
@@ -1361,11 +1381,12 @@ function renderLadderDynamic(root,s){
     <div class="lc-bet"><span class="lc-denom">${ladderDenom(r.denom)}</span><span class="lc-attempt">${money(r.bet)} <small>/ attempt</small></span><span class="lc-cr" title="Bet ÷ denom — press bet-up until the machine reads this">${cr} <small>credits</small></span></div>
     ${note?`<div class="lc-note">${esc(note)}</div>`:''}`;
   const isHL=pk==='high_limit';
+  const modeName=isHL?'High Limit':(prof?prof.short:'Standard');
   const mb=root.querySelector('[data-lad-mode]');
-  if(mb){mb.classList.toggle('on',!!pk);
-    mb.innerHTML=`Bet mode: <b>${isHL?'High Limit':(prof?prof.short:'Standard')}</b>`;}
-  const buyin=isHL?500:100;
-  const ps=root.querySelector('.lad-persess');if(ps)ps.textContent=`$${buyin.toLocaleString()} / attempt`;
+  if(mb){mb.classList.toggle('on',!!(prof||isHL||ml));
+    mb.innerHTML=`Bet mode: <b>${esc(modeName)}</b>`;}
+  const cb=root.querySelector('[data-lad-clear]');if(cb)cb.style.display=ml?'':'none';
+  const ps=root.querySelector('.lad-persess');if(ps)ps.textContent=`$${Number(balance).toLocaleString()} / attempt`;
   const sl=root.querySelector('.lad-slider');if(sl.value!==String(rung))sl.value=String(rung);
   const amt=root.querySelector('.ll-amt'),sub=root.querySelector('.ll-sub');
   if(L.lock>0){amt.innerHTML=`${money(L.lock)}<span class="ll-unit"> locked up</span>`;
@@ -1380,6 +1401,13 @@ function renderLadderDynamic(root,s){
 // tab; for an ad-hoc session it's kept as a local per-session override.
 async function cycleLadderProfile(root,s){
   const order=[null,'high_limit',...profileKeys()];
+  // When a "my ladder" is active, cycling switches which ladder it is but keeps your balance.
+  const ml=getMyLadder();
+  if(ml){
+    const cur=ml.key==='standard'?null:ml.key;
+    const next=order[(order.indexOf(cur)+1)%order.length];
+    setMyLadder(next||'standard',ml.balance);renderLadderDynamic(root,s);return;
+  }
   const next=order[(order.indexOf(ladderProfileKey(s))+1)%order.length];
   const g=gameForSession(s);
   if(g){
@@ -1417,6 +1445,8 @@ function bindLadder(root,s){
     const {lock}=ladderState(s);if(lock<=0)return;
     s.ladder_lock=lock-1;renderLadderDynamic(root,s);saveLadder(s);});
   root.querySelector('[data-lad-mode]').addEventListener('click',()=>cycleLadderProfile(root,s));
+  const clr=root.querySelector('[data-lad-clear]');
+  if(clr)clr.addEventListener('click',()=>{clearMyLadder();renderLadderDynamic(root,s);toast('Back to the default ladder.');});
   root.querySelector('[data-lad-toggle]').addEventListener('click',()=>{
     root.classList.toggle('collapsed');
     try{localStorage.setItem('ct_ladder_open',root.classList.contains('collapsed')?'0':'1');}catch(_){}});
@@ -1750,12 +1780,36 @@ async function onSignedIn(session){
 function boot(acct,bootstrap){
   account=acct;booted=true;
   applyBootstrap(bootstrap);cacheState();
+  runDataFixupsOnce();        // one-time data cleanups (names, Dragon Link variants) before first render
   hideAuthScreen();hideSplash();
   $('auth-reconnect').style.display='none';
   $('app').classList.add('show');
   setTab(currentTab||'today');
   maybeShowCompsPopup();
   seedBuiltinLaddersOnce();
+}
+// One-time, flagged data cleanups on the user's own data (DRIVE/MOCK). Idempotent and safe to leave
+// in place — the flag stops it re-running, and each step no-ops if already clean.
+//  • Rename people: Diane → Wife, Andre → Son (household names + comp/stake person refs).
+//  • Dragon Link games: strip any "(…)" parenthetical from the Variant subtitle.
+function runDataFixupsOnce(){
+  if(!(DRIVE||MOCK)||!mockDB||mockDB._mig_20261125)return;
+  const rename={diane:'Wife',andre:'Son'};
+  const mapName=n=>{const k=String(n||'').trim().toLowerCase();return rename[k]||n;};
+  if(Array.isArray(mockDB.household)){
+    mockDB.household.forEach(h=>{h.name=mapName(h.name);});
+    const seen=new Set();mockDB.household=mockDB.household.filter(h=>{const k=String(h.name).toLowerCase();if(seen.has(k))return false;seen.add(k);return true;});
+  }
+  (mockDB.comps||[]).forEach(c=>{c.person=mapName(c.person);});
+  (mockDB.stakes||[]).forEach(k=>{k.person=mapName(k.person);});
+  (mockDB.games||[]).forEach(g=>{
+    if(/dragon\s*link/i.test(g.name||'')||/dragon\s*link/i.test(g.variant||'')){
+      if(g.variant){const v=g.variant.replace(/\s*\([^)]*\)/g,'').replace(/\s{2,}/g,' ').trim();if(v!==g.variant)g.variant=v;}
+    }
+  });
+  mockDB._mig_20261125=1;
+  if(DRIVE)scheduleDriveSave();
+  applyBootstrap(mockBootstrap(state.today||todayLocal()));cacheState();
 }
 // One-time: copy the hard-coded built-in machine tables into the user's own data so they're fully
 // editable/deletable like any other. Runs once per account (flag persists in the Drive file); an
@@ -3734,15 +3788,25 @@ function openLadderPreviewSheet(key){
     <div class="muted" style="font-size:11px;margin:5px 0 2px;">Rescales the whole ladder to this buy-in${profile?'’s bets, snapped to this machine’s denominations':''}.</div>
     <div id="lad-name" class="bpl-head" style="margin-top:12px;"></div>
     <div class="bpl-wrap" id="lad-prev" style="margin-top:4px;"></div>
-    <div class="sheet-actions"><button class="btn primary" data-close-sheet>Done</button></div>`,()=>{
+    <button class="btn primary" id="lad-setmine" style="width:100%;margin-top:12px;">⚔️ Set as my ladder</button>
+    <div class="muted" style="font-size:11px;margin-top:5px;">Makes the live Attack Ladder use this ladder at this balance while you play.</div>
+    <div class="sheet-actions"><button class="btn" data-close-sheet>Done</button></div>`,()=>{
     const inp=document.getElementById('lad-bal'),nameEl=document.getElementById('lad-name'),prev=document.getElementById('lad-prev');
-    const paint=()=>{let bal=parseFloat(String(inp.value).replace(/[^0-9.]/g,''));if(!(bal>0))bal=defBal;
-      const lad=ladderForBalance(bal,profile);
+    const curBal=()=>{let bal=parseFloat(String(inp.value).replace(/[^0-9.]/g,''));return (bal>0)?bal:defBal;};
+    const paint=()=>{const bal=curBal();const lad=ladderForBalance(bal,profile);
       nameEl.textContent=ladderFormulaName(bal,lad);
       prev.innerHTML=ladderTableHTML(lad);};
     inp.addEventListener('input',paint);
     inp.addEventListener('focus',()=>inp.select());
     paint();
+    document.getElementById('lad-setmine').addEventListener('click',()=>{
+      const bal=curBal();setMyLadder(key,bal);
+      // Repaint any live ladder widget currently on screen so it reflects the choice immediately.
+      document.querySelectorAll('.ladder').forEach(el=>{const sid=el.dataset.ladder;
+        const s=(state.sessions||[]).find(x=>x.id===sid)||(state.carryover_open||[]).find(x=>x.id===sid);
+        if(s)renderLadderDynamic(el,s);});
+      closeSheet();toast(`Your ladder: $${Math.round(bal).toLocaleString()} ${isBaseKey(key)?BASE_LADDERS[key].label:(getProfile(key)?.short||'')}`.trim());
+    });
   });}
 
 function openBetTablesSheet(){
