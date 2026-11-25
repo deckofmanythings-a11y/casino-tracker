@@ -831,7 +831,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.73';
+const APP_VERSION='0.9.74';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -3701,10 +3701,8 @@ async function clearHitlistDone(){
   if(r&&r.ok){applyBootstrap(r.bootstrap);cacheState();renderHitlist();}
 }
 
-// seed: optional prefill for a NEW game (used by Duplicate). It never carries an id,
-// so saving it always creates a new catalog entry.
-function openGameSheet(game,seed){
-  const g=game||seed||{};const cat=g.category||'slot';
+function openGameSheet(game){
+  const g=game||{};const cat=g.category||'slot';
   openSheet(game?'Edit game':'Add a game',`
     <label class="field">Name / Core game</label><input id="g-name" placeholder="Dragon Link" value="${esc(g.name||'')}" list="dl-cores" autocomplete="off">
     <label class="field" id="g-variant-label">Variant (optional)</label><input id="g-variant" placeholder="Happy &amp; Prosperous" value="${esc(g.variant||'')}" list="dl-variants" autocomplete="off">
@@ -3744,12 +3742,10 @@ function openGameSheet(game,seed){
     <div class="toggle-row"><div class="tr-label">Hide name on tile
       <div class="set-sub" style="margin-top:2px;">Hides the game name on the Today tile. The variant name (or a core’s “N variants” count) still shows, so tiles stay easy to tell apart.</div></div>
       <div class="switch${g.hide_name?' on':''}" id="g-hidename"></div></div>
-    ${game?`<button class="btn" id="g-dupe" style="width:100%;margin-top:12px;" title="Start a new game with these settings, Variant left blank">Duplicate as new variant</button>`:''}
     <div class="sheet-actions"><button class="btn" data-close-sheet>Cancel</button>
       <button class="btn primary" id="g-save">Save</button></div>
   `,()=>{
     let selCat=cat;
-    if(seed){const v=document.getElementById('g-variant');if(v)setTimeout(()=>v.focus(),50);}
     let imageUrl=g.image_url||null,artBg=g.art_bg||'';
     enableCents(document.getElementById('g-bet'));
     applyStrategyUI('g',selCat);
@@ -3790,23 +3786,6 @@ function openGameSheet(game,seed){
       finally{pickBtn.disabled=false;fileInput.value='';}
     });
 
-    // Duplicate: reopen as "Add a game" carrying the form's CURRENT values (so unsaved
-    // tweaks come along) for core name, type, denom, bet, buy-in and art. Variant and
-    // strategy start blank. The original is left untouched unless you hit Save first.
-    const dupeBtn=document.getElementById('g-dupe');
-    if(dupeBtn)dupeBtn.addEventListener('click',()=>{
-      const slotty=isSlotty(selCat);
-      openGameSheet(null,{
-        name:document.getElementById('g-name').value.trim(),
-        variant:'',category:selCat,
-        default_denom:slotty?document.getElementById('g-denom').value:null,
-        default_bet:slotty?(document.getElementById('g-bet').value||null):null,
-        bet_profile:slotty?selProfile:'standard',
-        default_buyin:document.getElementById('g-buyin').value||null,
-        image_url:imageUrl||null,art_bg:(imageUrl&&artBg)?artBg:null,hide_name:hideName,
-        dupe_from:g.id});  // insert the new game right below the one it was duped from
-    });
-
     document.getElementById('g-save').addEventListener('click',async()=>{
       afterWrite(await api('ct-write',{action:'save-game',id:g.id||null,name:document.getElementById('g-name').value.trim(),
         variant:document.getElementById('g-variant').value.trim()||null,
@@ -3816,8 +3795,7 @@ function openGameSheet(game,seed){
         default_bet:isSlotty(selCat)?document.getElementById('g-bet').value:null,
         bet_profile:isSlotty(selCat)?selProfile:'standard',
         default_buyin:document.getElementById('g-buyin').value||null,
-        image_url:imageUrl||'',art_bg:(imageUrl&&artBg)?artBg:null,hide_name:hideName,
-        dupe_from:(g.id?null:(g.dupe_from||null))}));
+        image_url:imageUrl||'',art_bg:(imageUrl&&artBg)?artBg:null,hide_name:hideName}));
     });
   });
 }
@@ -4180,10 +4158,7 @@ function mockWrite(b){
   else if(a==='set-bonus-jackpot'){mockDB.sessions.forEach(s=>{const bx=s.bonuses.find(x=>x.id===b.id);if(bx)bx.is_jackpot=!!b.is_jackpot;});}
   else if(a==='save-game'){const img=('image_url' in b)?(b.image_url||null):undefined;const abg=('art_bg' in b)?(b.art_bg||null):undefined;const vr=('variant' in b)?(b.variant||null):undefined;const vn=('variant_note' in b)?(b.variant_note||null):undefined;
     if(b.id){const g=mockDB.games.find(x=>x.id===b.id);if(g){Object.assign(g,{name:b.name,category:b.category,default_denom:b.default_denom?num(b.default_denom):null,default_bet:b.default_bet?num(b.default_bet):null,default_buyin:b.default_buyin?num(b.default_buyin):null});if(img!==undefined)g.image_url=img;if(abg!==undefined)g.art_bg=abg;if(vr!==undefined)g.variant=vr;if(vn!==undefined)g.variant_note=vn;if('strategy' in b)g.strategy=b.strategy;if('credit_min' in b)g.credit_min=num(b.credit_min)===88?88:0;if('bet_profile' in b)g.bet_profile=b.bet_profile||null;if('hide_name' in b)g.hide_name=b.hide_name===true;}}
-    else{const src=b.dupe_from?mockDB.games.find(x=>x.id===b.dupe_from):null;
-      // A duplicate slots in right below its source: take source+1, shove everyone after it down.
-      let so=mockDB.games.length;
-      if(src){so=num(src.sort_order)+1;mockDB.games.forEach(x=>{if(num(x.sort_order)>=so)x.sort_order=num(x.sort_order)+1;});}
+    else{const so=mockDB.games.length;
       mockDB.games.push({id:mockId('g'),name:b.name,category:b.category,variant:vr||null,variant_note:vn||null,strategy:b.strategy||null,default_denom:b.default_denom?num(b.default_denom):null,default_bet:b.default_bet?num(b.default_bet):null,credit_min:num(b.credit_min)===88?88:0,bet_profile:b.bet_profile||null,hide_name:b.hide_name===true,default_buyin:b.default_buyin?num(b.default_buyin):null,image_url:img||null,art_bg:abg||null,sort_order:so,archived:false});}}
   else if(a==='delete-game'){const g=mockDB.games.find(x=>x.id===b.id);if(g)g.archived=true;}
   else if(a==='set-game-favorite'){const g=mockDB.games.find(x=>x.id===b.id);if(g)g.favorite=b.favorite===true;}
