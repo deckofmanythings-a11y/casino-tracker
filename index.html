@@ -307,6 +307,20 @@
   .gr-ctrls .icon-btn{width:30px;height:30px;font-size:12px;}
   .gr-ctrls .icon-btn:disabled{opacity:.28;}
   .reorder-hint{font-size:11px;color:var(--faint);margin:2px 2px 6px;}
+  /* Games tab: core group + nested light variants */
+  .game-group{margin-top:8px;}
+  .game-group .game-row{margin-top:0;}
+  .core-row.open{border-bottom-left-radius:0;border-bottom-right-radius:0;border-bottom-color:transparent;}
+  .gv-count{display:inline-block;min-width:16px;text-align:center;font-size:10px;font-weight:800;color:var(--on-gold);background:var(--gold);border-radius:999px;padding:0 5px;vertical-align:1px;margin-left:4px;}
+  .gv-list{background:var(--panel);border:1px solid var(--border);border-top:0;border-radius:0 0 13px 13px;padding:4px 10px 8px;}
+  .gv-row{display:flex;align-items:center;gap:8px;padding:7px 2px;border-top:1px solid var(--faint);}
+  .gv-row:first-child{border-top:0;}
+  .gv-name{flex:0 0 auto;max-width:42%;font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;}
+  .gv-sub{flex:1;min-width:0;font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;}
+  .gv-row .icon-btn{width:28px;height:28px;font-size:12px;flex:0 0 auto;}
+  .gv-add{display:flex;gap:6px;margin-top:8px;}
+  .gv-add input{flex:1;min-width:0;}
+  .gv-add button{flex:0 0 auto;}
   /* Household rows (Settings) */
   .hh-row{display:flex;align-items:center;gap:8px;background:var(--panel);border:1px solid var(--border);
     border-radius:13px;padding:10px 12px;margin-top:8px;}
@@ -817,7 +831,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.72';
+const APP_VERSION='0.9.73';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -902,6 +916,7 @@ function saveStatsView(){try{localStorage.setItem('ct_stats_view',
   JSON.stringify({byGame:byGameMode,byCasino:byCasinoMode,lifetime:lifetimeMode,combine:combineVariants,gameCat:byGameCat}));}catch(_){}}
 let openCat=null; // Today tab: which category's games are expanded (null = none)
 let openCore=null; // Today tab: which core game's variants are expanded inline (null = none)
+let gamesOpenCore=null; // Games tab: which core is expanded to show/manage its variants (null = none)
 
 // ── Formatting helpers ─────────────────────────────────────────────────────
 // The tracker's "gambling day" rolls over at a user-set hour (default 3am local, not midnight):
@@ -1875,7 +1890,8 @@ document.addEventListener('click',e=>{if(e.target.closest('[data-open-settings]'
 // title (skipping the core game name) and the free-text variant note as the subtitle (blank
 // if none). Normal (favorite/standalone) tiles show the game name with the variant as sub.
 function favChip(g,asVariant){
-  const art=g.image_url&&g.image_url.indexOf('mock://')!==0;
+  const eg=effectiveGame(g)||g;   // inherit a light variant's art/bet/category from its core for display
+  const art=eg.image_url&&eg.image_url.indexOf('mock://')!==0;
   // "Hide name on tile" hides only the (often repeated) CORE name. The VARIANT name is what tells
   // tiles apart, so it ALWAYS shows — otherwise several art-only variants of one core are a guessing game.
   const hide=!!g.hide_name;
@@ -1891,15 +1907,15 @@ function favChip(g,asVariant){
     label=isVar?g.variant:g.name;
     sub=asVariant
       ?(g.variant_note?esc(g.variant_note):'')
-      :(g.variant?esc(g.variant):(g.default_bet!=null?money(g.default_bet)+' bet':catLabel(g.category)));
+      :(g.variant?esc(g.variant):(eg.default_bet!=null?money(eg.default_bet)+' bet':catLabel(eg.category)));
   }
   const showText=!!label; // only truly nameless when hidden with no variant to show
   const subHtml=sub?`<div class="fc-sub">${sub}</div>`:'';
   if(art){
     // g.art_bg is a manual override (Auto/Black/White); when unset, data-arturl drives auto-detect.
-    const attrs=g.art_bg
-      ?`style="background-image:url(&quot;${g.image_url}&quot;);background-color:${esc(g.art_bg)};"`
-      :`data-arturl="${esc(g.image_url)}" style="background-image:url(&quot;${g.image_url}&quot;)"`;
+    const attrs=eg.art_bg
+      ?`style="background-image:url(&quot;${eg.image_url}&quot;);background-color:${esc(eg.art_bg)};"`
+      :`data-arturl="${esc(eg.image_url)}" style="background-image:url(&quot;${eg.image_url}&quot;)"`;
     if(!showText)return `<div class="fast-chip has-art noname" data-game="${g.id}" ${attrs}></div>`;
     return `<div class="fast-chip has-art" data-game="${g.id}" ${attrs}>
       <div class="fc-scrim"></div>
@@ -1915,6 +1931,21 @@ function favChip(g,asVariant){
 function groupByCore(gs){const m={},order=[];
   gs.forEach(g=>{const core=g.name||'';if(!m[core]){m[core]=[];order.push(core);}m[core].push(g);});
   return order.map(core=>({core,items:m[core]}));}
+// ── Core + light variants ────────────────────────────────────────────────────
+// A "variant" is a game sharing its core's name. A LIGHT variant leaves config blank and INHERITS
+// it from the core (the group's representative — the no-variant game, else the first). effectiveGame
+// fills those blanks so a light variant plays exactly like its core unless it overrides a field.
+const INHERIT_FIELDS=['category','default_denom','default_bet','default_buyin','bet_profile','image_url','art_bg','strategy'];
+function gameGroupItems(name){return (state.games||[]).filter(g=>(g.name||'')===(name||''));}
+function coreRep(items){return (items||[]).find(g=>!g.variant)||(items||[])[0]||null;}
+function effectiveGame(g){
+  if(!g)return g;
+  const rep=coreRep(gameGroupItems(g.name));
+  if(!rep||rep.id===g.id)return g;                 // g IS the core (or standalone) — nothing to inherit
+  const out={...g};
+  INHERIT_FIELDS.forEach(k=>{if(out[k]==null||out[k]==='')out[k]=rep[k];});
+  return out;
+}
 // A collapsed "core" tile standing in for a game that has multiple variants; tap expands them.
 function coreChip(core,items,rep,open){
   const n=items.length,sub=`${n} variants ${open?'▴':'▾'}`;
@@ -2275,7 +2306,7 @@ function ladderSelectOptions(sel){
 }
 // `prefill` carries the in-progress field values back after the "Add a New Ladder" builder detour.
 function openSessionSheet(game,prefill){
-  const g=game||{},pf=prefill||{};
+  const g=effectiveGame(game)||{},pf=prefill||{};  // a light variant inherits its core's denom/bet/ladder/buy-in
   const cat=pf.category||g.category||'slot';
   const vName=pf.name!==undefined?pf.name:(g.name||'');
   const vVar=pf.variant!==undefined?pf.variant:(g.variant||'');
@@ -3370,27 +3401,63 @@ function renderGames(){
   const body=document.getElementById('games-body');
   const games=state.games||[];
   if(games.length===0){body.innerHTML='<div class="empty">No fast-select games yet.<br>Add the machines/tables you play most.</div>';return;}
-  const hint=games.length>1?'<div class="reorder-hint">Use ▲▼ to reorder — this is your Today tap order.</div>':'';
-  body.innerHTML=hint+games.map((g,i)=>{const art=g.image_url&&g.image_url.indexOf('mock://')!==0;
-    return `<div class="game-row" data-game-id="${g.id}">
-      <div class="gr-thumb" data-editgame="${g.id}" ${art?(g.art_bg?`style="background-image:url(&quot;${g.image_url}&quot;);background-color:${esc(g.art_bg)};"`:`data-arturl="${esc(g.image_url)}" style="background-image:url(&quot;${g.image_url}&quot;)"`):''}>${art?'':catIcon(g.category)}</div>
-      <div class="gr-main" data-editgame="${g.id}"><div class="sr-name">${esc(g.name)}</div>
-        <div class="sr-sub">${g.variant?esc(g.variant)+' · ':''}${catLabel(g.category)}${g.default_bet!=null?' · '+money(g.default_bet)+' bet':''}${g.default_denom!=null?' · '+money(g.default_denom)+' denom':''}${g.default_buyin!=null?' · '+money(g.default_buyin)+' buy-in':''}</div></div>
+  const groups=groupByCore(games);
+  const hint=groups.length>1?'<div class="reorder-hint">Use ▲▼ to reorder core games — this is your Today tap order. Tap ▾ to manage a game’s variants.</div>':'';
+  const thumbAttrs=g=>{const art=g.image_url&&g.image_url.indexOf('mock://')!==0;
+    return art?(g.art_bg?`style="background-image:url(&quot;${g.image_url}&quot;);background-color:${esc(g.art_bg)};"`
+      :`data-arturl="${esc(g.image_url)}" style="background-image:url(&quot;${g.image_url}&quot;)"`):'';};
+  body.innerHTML=hint+groups.map((grp,gi)=>{
+    const items=grp.items,rep=coreRep(items),vcount=items.length,open=gamesOpenCore===grp.core;
+    const art=rep.image_url&&rep.image_url.indexOf('mock://')!==0;
+    const coreSub=vcount>1?`${vcount} variants · ${catLabel(rep.category)}`
+      :`${catLabel(rep.category)}${rep.default_bet!=null?' · '+money(rep.default_bet)+' bet':''}${rep.default_denom!=null?' · '+money(rep.default_denom)+' denom':''}${rep.default_buyin!=null?' · '+money(rep.default_buyin)+' buy-in':''}`;
+    const coreRow=`<div class="game-row core-row${open?' open':''}">
+      <div class="gr-thumb" data-coretoggle="${esc(grp.core)}" ${thumbAttrs(rep)}>${art?'':catIcon(rep.category)}</div>
+      <div class="gr-main" data-coretoggle="${esc(grp.core)}"><div class="sr-name">${esc(grp.core||'(unnamed)')}${vcount>1?`<span class="gv-count">${vcount}</span>`:''}</div>
+        <div class="sr-sub">${coreSub}</div></div>
       <div class="gr-ctrls">
-        <button class="icon-btn fav-btn${g.favorite?' on':''}" data-fav="${g.id}" aria-label="Favorite">${g.favorite?'♥':'♡'}</button>
-        <button class="icon-btn" data-move-up="${g.id}" ${i===0?'disabled':''} aria-label="Move up">▲</button>
-        <button class="icon-btn" data-move-down="${g.id}" ${i===games.length-1?'disabled':''} aria-label="Move down">▼</button>
-        <button class="icon-btn" data-delgame="${g.id}" aria-label="Remove">🗑</button>
+        <button class="icon-btn fav-btn${rep.favorite?' on':''}" data-fav="${rep.id}" aria-label="Favorite">${rep.favorite?'♥':'♡'}</button>
+        <button class="icon-btn" data-core-up="${esc(grp.core)}" ${gi===0?'disabled':''} aria-label="Move up">▲</button>
+        <button class="icon-btn" data-core-down="${esc(grp.core)}" ${gi===groups.length-1?'disabled':''} aria-label="Move down">▼</button>
+        <button class="icon-btn" data-coretoggle="${esc(grp.core)}" aria-label="Variants">${open?'▴':'▾'}</button>
       </div>
-    </div>`;}).join('');
+    </div>`;
+    let list='';
+    if(open){
+      const rows=items.map(g=>{
+        const vlabel=g.variant?esc(g.variant):'Base game';
+        const ov=[g.variant_note?esc(g.variant_note):'',
+          g.default_bet!=null?money(g.default_bet)+' bet':'',
+          g.default_denom!=null?money(g.default_denom)+' denom':'',
+          (g.bet_profile&&g.bet_profile!=='standard'&&getProfile(g.bet_profile))?esc(getProfile(g.bet_profile).short):''
+        ].filter(Boolean).join(' · ');
+        const sub=ov||(g.id===rep.id?'core defaults':'inherits core');
+        return `<div class="gv-row">
+          <div class="gv-name" data-editgame="${g.id}">${vlabel}</div>
+          <div class="gv-sub" data-editgame="${g.id}">${sub}</div>
+          <button class="icon-btn fav-btn${g.favorite?' on':''}" data-fav="${g.id}" aria-label="Favorite">${g.favorite?'♥':'♡'}</button>
+          <button class="icon-btn" data-delgame="${g.id}" aria-label="Remove">🗑</button>
+        </div>`;}).join('');
+      list=`<div class="gv-list">${rows}
+        <div class="gv-add"><input id="gv-add-${gi}" placeholder="+ Add a variant (e.g. Autumn Moon)" autocomplete="off" maxlength="60">
+          <button class="btn" data-addvar="${esc(grp.core)}" data-addvar-in="gv-add-${gi}">Add</button></div></div>`;
+    }
+    return `<div class="game-group">${coreRow}${list}</div>`;
+  }).join('');
   paintArtBgs(body);
+  body.querySelectorAll('[data-coretoggle]').forEach(el=>el.addEventListener('click',()=>{
+    const c=el.dataset.coretoggle;gamesOpenCore=(gamesOpenCore===c)?null:c;renderGames();}));
   body.querySelectorAll('[data-editgame]').forEach(el=>el.addEventListener('click',()=>
-    openGameSheet(games.find(g=>g.id===el.dataset.editgame))));
-  body.querySelectorAll('[data-move-up]').forEach(el=>el.addEventListener('click',()=>moveGame(el.dataset.moveUp,-1)));
-  body.querySelectorAll('[data-move-down]').forEach(el=>el.addEventListener('click',()=>moveGame(el.dataset.moveDown,1)));
+    openGameSheet((state.games||[]).find(g=>g.id===el.dataset.editgame))));
+  body.querySelectorAll('[data-core-up]').forEach(el=>el.addEventListener('click',()=>moveCore(el.dataset.coreUp,-1)));
+  body.querySelectorAll('[data-core-down]').forEach(el=>el.addEventListener('click',()=>moveCore(el.dataset.coreDown,1)));
   body.querySelectorAll('[data-delgame]').forEach(el=>el.addEventListener('click',async()=>{
     if(!await confirmDialog('Remove this game from fast-select?',{confirmLabel:'Remove',danger:true}))return;
     afterWrite(await api('ct-write',{action:'delete-game',id:el.dataset.delgame}));}));
+  body.querySelectorAll('[data-addvar]').forEach(el=>el.addEventListener('click',()=>{
+    const inp=document.getElementById(el.dataset.addvarIn);if(inp)addVariant(el.dataset.addvar,inp.value);}));
+  body.querySelectorAll('.gv-add input').forEach(inp=>inp.addEventListener('keydown',e=>{
+    if(e.key==='Enter'){e.preventDefault();const btn=inp.parentElement.querySelector('[data-addvar]');addVariant(btn.dataset.addvar,inp.value);}}));
   body.querySelectorAll('[data-fav]').forEach(el=>el.addEventListener('click',async()=>{
     const id=el.dataset.fav,g=(state.games||[]).find(x=>x.id===id);if(!g)return;
     const newVal=!g.favorite;
@@ -3400,14 +3467,24 @@ function renderGames(){
     else{el.classList.toggle('on',!newVal);el.textContent=!newVal?'♥':'♡';} // revert
   }));
 }
-
-// Move a favorite one slot up (dir=-1) or down (dir=1) and persist the new order via
-// reorder-games. Optimistic local reorder + re-render so it feels instant.
-async function moveGame(id,dir){
-  const ids=(state.games||[]).map(g=>g.id);
-  const i=ids.indexOf(id), j=i+dir;
-  if(i<0||j<0||j>=ids.length)return;
-  [ids[i],ids[j]]=[ids[j],ids[i]];
+// Add a LIGHT variant to a core: a sparse game row (name = core, just the variant) that inherits
+// the core's denom/bet/buy-in/ladder/art. Keeps the core expanded so you can add several.
+async function addVariant(core,variant){
+  variant=(variant||'').trim();if(!variant)return;
+  const rep=coreRep(gameGroupItems(core));
+  if((gameGroupItems(core)).some(g=>(g.variant||'')===variant)){toast('That variant already exists.');return;}
+  gamesOpenCore=core;
+  const r=await api('ct-write',{action:'save-game',name:core,variant,category:(rep&&rep.category)||'slot'});
+  if(r&&r.ok){applyBootstrap(r.bootstrap);cacheState();renderGames();toast('Variant added — it inherits the core’s settings.');}
+  else toast((r&&r.message)||'Couldn’t add the variant.');
+}
+// Move a whole CORE group up/down (keeping its variants together) and persist the flattened order.
+async function moveCore(core,dir){
+  const groups=groupByCore(state.games||[]);
+  const i=groups.findIndex(g=>g.core===core),j=i+dir;
+  if(i<0||j<0||j>=groups.length)return;
+  [groups[i],groups[j]]=[groups[j],groups[i]];
+  const ids=groups.flatMap(g=>g.items.map(x=>x.id));
   state.games=ids.map(x=>(state.games||[]).find(g=>g.id===x)).filter(Boolean);
   renderGames();
   const resp=await api('ct-write',{action:'reorder-games',ids});
@@ -3632,6 +3709,7 @@ function openGameSheet(game,seed){
     <label class="field">Name / Core game</label><input id="g-name" placeholder="Dragon Link" value="${esc(g.name||'')}" list="dl-cores" autocomplete="off">
     <label class="field" id="g-variant-label">Variant (optional)</label><input id="g-variant" placeholder="Happy &amp; Prosperous" value="${esc(g.variant||'')}" list="dl-variants" autocomplete="off">
     <label class="field">Variant note (optional)</label><input id="g-variant-note" placeholder="e.g. Major x3 — shows under the variant on Today" value="${esc(g.variant_note||'')}" autocomplete="off">
+    <div class="muted" style="font-size:11px;margin-top:4px;">A variant leaves fields below blank to inherit the core game’s denom, bet, buy-in, ladder and art — fill one only to override it.</div>
     <div id="g-strategy-wrap"><label class="field">Strategy (optional)</label><textarea id="g-strategy" placeholder="e.g. Pass line with odds and two Come bets with odds at all times">${esc(g.strategy||'')}</textarea></div>
     ${gameDatalists()}
     <label class="field">Type</label><div class="seg" id="g-cat">${segMarkup(cat)}</div>
