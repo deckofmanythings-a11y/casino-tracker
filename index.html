@@ -748,7 +748,7 @@
     <h1 style="font-size:22px;margin:6px 2px 10px;">Fast-Select Games</h1>
     <div id="games-body"></div>
     <button class="btn primary btn-lg" style="margin-top:14px;" data-add-game>+ Add a game</button>
-    <button class="btn btn-lg" style="margin-top:8px;" data-bet-tables>⚔️ Bet tables (Attack Ladder)</button>
+    <button class="btn btn-lg" style="margin-top:8px;" data-bet-tables>⚔️ Attack Ladders</button>
   </div>
 
   <!-- ── HIT LIST ──────────────────────────────────────────── -->
@@ -813,7 +813,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.66';
+const APP_VERSION='0.9.67';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -1160,6 +1160,23 @@ const LADDER=[
   {name:'Attack Max',  band:'$1,025+',      denom:1,    bet:25.00, floor:1025, lock:650, live:375, zone:'max', note:'Every +$100 = +$100 locked'},
 ];
 function ladderDenom(d){return d<1?(Math.round(d*100)+'¢'):('$'+d);}
+// High Limit = the Standard ladder rescaled ×k ($500 buy-in). Same shape and the same credit
+// counts; every dollar and the denom are multiplied, and each band is recomputed from the floors.
+function scaleLadder(base,k){
+  const floors=base.map(r=>r.floor*k);
+  return base.map((r,i)=>{
+    const lo=floors[i],hi=i<base.length-1?floors[i+1]:null;
+    const band=i===0?('Under $'+hi.toLocaleString())
+      :(hi==null?('$'+lo.toLocaleString()+'+'):('$'+lo.toLocaleString()+'–'+(hi-1).toLocaleString()));
+    return {...r,band,denom:+(r.denom*k).toFixed(2),bet:+(r.bet*k).toFixed(2),floor:lo,lock:r.lock*k,live:r.live*k,
+      note:r.note?r.note.replace(/\$([\d,]+)/g,(m,n)=>'$'+(parseInt(n.replace(/,/g,''),10)*k).toLocaleString()):r.note};
+  });
+}
+const LADDER_HL=scaleLadder(LADDER,5);
+// The two bankroll BASE ladders, keyed like bet profiles so one selector covers both. 'standard'
+// is also represented by null in a session's stored key (legacy); 'high_limit' is always explicit.
+const BASE_LADDERS={standard:{label:'Standard',buyin:100,table:LADDER},high_limit:{label:'High Limit',buyin:500,table:LADDER_HL}};
+function isBaseKey(k){return k==='standard'||k==='high_limit';}
 // Credit-based machines (Super Hot Flaming Pots, Mystery of the Lamp, the 88 Fortunes / Dancing
 // Drums family…) don't take an arbitrary dollar bet: you pick a DENOMINATION, then a credit "bet
 // level" from that machine's menu, and the dollar bet = denom × credits. Each BET_PROFILE captures
@@ -1182,7 +1199,10 @@ const BUILTIN_PROFILES={
 function customProfiles(){const m={};(state.bet_profiles||[]).forEach(p=>{
   if(!p||!p.key||!Array.isArray(p.tiers))return;
   m[p.key]={label:p.label||p.key,short:p.short||p.label||p.key,note:p.note||'',tiers:p.tiers,custom:true,id:p.id};});return m;}
-function allProfiles(){return {...BUILTIN_PROFILES,...customProfiles()};}
+// Once the built-ins have been seeded into the user's own (editable) tables, stop merging the
+// hard-coded copies so an edited/deleted one isn't shadowed or resurrected by the const.
+function allProfiles(){let seeded=false;try{seeded=!!(mockDB&&mockDB._seededBuiltins);}catch(_){}
+  const base=seeded?{}:BUILTIN_PROFILES;return {...base,...customProfiles()};}
 function profileKeys(){return Object.keys(allProfiles());}
 function getProfile(k){return k?(allProfiles()[k]||null):null;}
 function profileOptions(p){const out=[];(p.tiers||[]).forEach(t=>(t.denoms||[]).forEach(d=>(t.levels||[]).forEach(c=>{
@@ -1260,17 +1280,19 @@ function gameForSession(s){return (state.games||[]).find(g=>g.id===s.game_id)||n
 function ladderProfileKey(s){
   const g=gameForSession(s);
   if(g){
-    if(g.bet_profile)return g.bet_profile==='standard'?null:(getProfile(g.bet_profile)?g.bet_profile:null);
+    if(g.bet_profile)return g.bet_profile==='standard'?null:((g.bet_profile==='high_limit'||getProfile(g.bet_profile))?g.bet_profile:null);
     if(num(g.credit_min)===88)return 'flaming_pots';
     return null;
   }
-  try{const o=localStorage.getItem('ct_lprof_'+s.id);return (o&&getProfile(o))?o:null;}catch(_){return null;}
+  try{const o=localStorage.getItem('ct_lprof_'+s.id);return (o&&(o==='high_limit'||getProfile(o)))?o:null;}catch(_){return null;}
 }
-function ladderTable(s){const k=ladderProfileKey(s);return k?profileLadder(k):LADDER;}
+function ladderTable(s){const k=ladderProfileKey(s);if(k==='high_limit')return LADDER_HL;return k?profileLadder(k):LADDER;}
 // Starts minimized behind a pill; only an explicit '1' (user opened it) expands it.
 function ladderOpen(){try{return localStorage.getItem('ct_ladder_open')==='1';}catch(_){return false;}}
 // A fresh session (no stored rung yet) starts on Cruise — the ~$100 buy-in level.
 const LADDER_START=LADDER.findIndex(r=>r.name==='Cruise');
+// A ladder's name = [buy-in] / [credits at the buy-in rung] / [denom at the buy-in rung].
+function ladderFormulaName(buyin,tbl){const r=tbl[LADDER_START];return '$'+Number(buyin).toLocaleString()+'/'+Math.round(r.bet/r.denom)+'/'+ladderDenom(r.denom);}
 // Normalize a session's stored rung/lock to valid in-range indices; unset ⇒ Cruise.
 // An explicit 0 (Survival) is respected — only a missing/invalid value falls back to the start.
 function ladderState(s){const n=LADDER.length-1,cl=v=>{const i=parseInt(v,10);return i>=0?Math.min(i,n):LADDER_START;};
@@ -1309,23 +1331,26 @@ function renderLadderDynamic(root,s){
   cur.innerHTML=`<div class="lc-top"><span class="lc-name">${esc(r.name)}</span><span class="lc-band">${esc(r.band)}</span></div>
     <div class="lc-bet"><span class="lc-denom">${ladderDenom(r.denom)}</span><span class="lc-attempt">${money(r.bet)} <small>/ attempt</small></span><span class="lc-cr" title="Bet ÷ denom — press bet-up until the machine reads this">${cr} <small>credits</small></span></div>
     ${note?`<div class="lc-note">${esc(note)}</div>`:''}`;
+  const isHL=pk==='high_limit';
   const mb=root.querySelector('[data-lad-mode]');
-  if(mb){mb.classList.toggle('on',!!prof);
-    mb.innerHTML=`Bet mode: <b>${prof?prof.short:'Standard'}</b>`;}
+  if(mb){mb.classList.toggle('on',!!pk);
+    mb.innerHTML=`Bet mode: <b>${isHL?'High Limit':(prof?prof.short:'Standard')}</b>`;}
+  const buyin=isHL?500:100;
+  const ps=root.querySelector('.lad-persess');if(ps)ps.textContent=`$${buyin.toLocaleString()} / attempt`;
   const sl=root.querySelector('.lad-slider');if(sl.value!==String(rung))sl.value=String(rung);
   const amt=root.querySelector('.ll-amt'),sub=root.querySelector('.ll-sub');
   if(L.lock>0){amt.innerHTML=`${money(L.lock)}<span class="ll-unit"> locked up</span>`;
     sub.textContent=`at ${money(L.floor)} · ${money(L.live)} stays live`;}
-  else{amt.innerHTML=`$0<span class="ll-unit"> locked up</span>`;sub.textContent='Nothing locked yet — build to $150.';}
+  else{amt.innerHTML=`$0<span class="ll-unit"> locked up</span>`;sub.textContent=`Nothing locked yet — build to $${tbl[2].floor.toLocaleString()}.`;}
   root.querySelector('[data-revert]').disabled=!(L.lock>0);
   root.querySelector('[data-step="-1"]').disabled=rung<=0;
   root.querySelector('[data-step="1"]').disabled=rung>=LADDER.length-1;
 }
-// Cycle the ladder's bet profile: Standard → each machine profile → back. For a catalog game this
-// marks the GAME (bet_profile), so it's remembered everywhere and mirrored in the Games tab; for an
-// ad-hoc session it's kept as a local per-session override.
+// Cycle the ladder's bet mode: Standard → High Limit → each machine table → back. For a catalog
+// game this marks the GAME (bet_profile), so it's remembered everywhere and mirrored in the Games
+// tab; for an ad-hoc session it's kept as a local per-session override.
 async function cycleLadderProfile(root,s){
-  const order=[null,...profileKeys()];
+  const order=[null,'high_limit',...profileKeys()];
   const next=order[(order.indexOf(ladderProfileKey(s))+1)%order.length];
   const g=gameForSession(s);
   if(g){
@@ -1701,6 +1726,23 @@ function boot(acct,bootstrap){
   $('app').classList.add('show');
   setTab(currentTab||'today');
   maybeShowCompsPopup();
+  seedBuiltinLaddersOnce();
+}
+// One-time: copy the hard-coded built-in machine tables into the user's own data so they're fully
+// editable/deletable like any other. Runs once per account (flag persists in the Drive file); an
+// already-present key is skipped, and a later delete won't be resurrected (allProfiles stops merging
+// the consts once the flag is set).
+async function seedBuiltinLaddersOnce(){
+  if(!(DRIVE||MOCK)||!mockDB||mockDB._seededBuiltins)return;
+  const have=new Set((mockDB.bet_profiles||[]).map(p=>p.key));
+  let last=null;
+  for(const [key,p] of Object.entries(BUILTIN_PROFILES)){
+    if(have.has(key))continue;
+    last=await api('ct-write',{action:'save-bet-profile',key,label:p.label,short:p.short,note:p.note||null,tiers:JSON.parse(JSON.stringify(p.tiers))});
+  }
+  mockDB._seededBuiltins=1;
+  if(DRIVE)scheduleDriveSave();
+  if(last&&last.ok){applyBootstrap(last.bootstrap);cacheState();if(currentTab==='games')renderGames();}
 }
 
 async function doSignOut(){
@@ -3496,7 +3538,7 @@ function openGameSheet(game,seed){
       <div><label class="field">Default bet</label><input id="g-bet" inputmode="decimal" value="${g.default_bet??''}"></div></div></div>
     <div id="g-betprofile-wrap" style="${isSlotty(cat)?'':'display:none'}">
       <label class="field">Attack Ladder bet structure</label>
-      <select id="g-betprofile">${['standard',...profileKeys()].map(k=>`<option value="${k}">${k==='standard'?'Standard':esc(getProfile(k).label)}</option>`).join('')}</select>
+      <select id="g-betprofile">${['standard','high_limit',...profileKeys()].map(k=>`<option value="${k}">${k==='standard'?'Standard ($100)':k==='high_limit'?'High Limit ($500)':esc(getProfile(k).label)}</option>`).join('')}</select>
       <div class="muted" style="font-size:11px;margin-top:4px;">For credit-based machines — the ladder picks the denom + credit bet level closest to each rung.</div>
     </div>
     <label class="field">Default buy-in (optional)</label>
@@ -3532,7 +3574,7 @@ function openGameSheet(game,seed){
     enableCents(document.getElementById('g-bet'));
     applyStrategyUI('g',selCat);
     // Bet-structure profile for credit-based machines (slot games only).
-    let selProfile=(g.bet_profile&&(g.bet_profile==='standard'||getProfile(g.bet_profile)))?g.bet_profile:(num(g.credit_min)===88?'flaming_pots':'standard');
+    let selProfile=(g.bet_profile&&(g.bet_profile==='standard'||g.bet_profile==='high_limit'||getProfile(g.bet_profile)))?g.bet_profile:(num(g.credit_min)===88?'flaming_pots':'standard');
     const bpSel=document.getElementById('g-betprofile');if(bpSel){bpSel.value=selProfile;bpSel.addEventListener('change',()=>selProfile=bpSel.value);}
     let hideName=!!g.hide_name;
     const hnSw=document.getElementById('g-hidename');if(hnSw)hnSw.addEventListener('click',()=>{hideName=!hideName;hnSw.classList.toggle('on',hideName);});
@@ -3641,38 +3683,46 @@ async function scanMachine(files){
 }
 function profileSummary(p){const d=new Set();(p.tiers||[]).forEach(t=>(t.denoms||[]).forEach(x=>d.add(num(x))));
   const g=(p.tiers||[]).length;return `${d.size} denom${d.size===1?'':'s'} · ${g} group${g===1?'':'s'}`;}
-// The computed Attack Ladder as a compact table (used in the builder preview and the view sheet).
+// A ladder (array of rungs) as a compact table (builder preview + the view sheet).
+function ladderRowsHTML(lad){return lad.map((r,i)=>{const cr=Math.round(r.bet/r.denom);
+    const dup=i>0&&r.name!==lad[i-1].name&&Math.abs(r.bet-lad[i-1].bet)<1e-9;
+    return `<tr><td class="bpl-rung">${esc(r.name)}</td><td class="bpl-combo">${ladderDenom(r.denom)} × ${cr}</td><td class="bpl-bet${dup?' dup':''}">${money(r.bet)}</td></tr>`;}).join('');}
+function ladderTableHTML(lad){return `<table class="bpl-table"><thead><tr><th>Rung</th><th>Set machine to</th><th>Bet</th></tr></thead><tbody>${ladderRowsHTML(lad)}</tbody></table>`;}
 function ladderPreviewHTML(p){
   if(!profileOptions(p).length)return '<div class="muted" style="font-size:12px;padding:6px 2px;">Pick a denomination and type in some bet levels to see the ladder.</div>';
-  const lad=buildProfileLadder(p);
-  const rows=lad.map((r,i)=>{const cr=Math.round(r.bet/r.denom);
-    const dup=i>0&&r.name!==lad[i-1].name&&Math.abs(r.bet-lad[i-1].bet)<1e-9;
-    return `<tr><td class="bpl-rung">${esc(r.name)}</td><td class="bpl-combo">${ladderDenom(r.denom)} × ${cr}</td><td class="bpl-bet${dup?' dup':''}">${money(r.bet)}</td></tr>`;}).join('');
-  return `<table class="bpl-table"><thead><tr><th>Rung</th><th>Set machine to</th><th>Bet</th></tr></thead><tbody>${rows}</tbody></table>`;
+  return ladderTableHTML(buildProfileLadder(p));
 }
-function openLadderPreviewSheet(key){const p=getProfile(key);if(!p)return;
-  openSheet(p.label,`${p.note?`<div class="muted" style="font-size:12px;margin-bottom:8px;">${esc(p.note)}</div>`:''}
-    <div class="bpl-wrap">${ladderPreviewHTML(p)}</div>
+// View one ladder: a bankroll base ('standard'/'high_limit') or a machine table (its key).
+function openLadderPreviewSheet(key){
+  let title,note,lad;
+  if(isBaseKey(key)){const b=BASE_LADDERS[key];title=ladderFormulaName(b.buyin,b.table);
+    note=`${b.label} bankroll ladder · $${b.buyin.toLocaleString()} / attempt`;lad=b.table;}
+  else{const p=getProfile(key);if(!p)return;const built=buildProfileLadder(p);title=ladderFormulaName(100,built);
+    note=[p.label,p.note].filter(Boolean).join(' · ');lad=built;}
+  openSheet(title,`${note?`<div class="muted" style="font-size:12px;margin-bottom:8px;">${esc(note)}</div>`:''}
+    <div class="bpl-wrap">${ladderTableHTML(lad)}</div>
     <div class="sheet-actions"><button class="btn primary" data-close-sheet>Done</button></div>`);}
 
 function openBetTablesSheet(){
   const custom=customProfiles();const ckeys=Object.keys(custom);
-  const bikeys=Object.keys(BUILTIN_PROFILES);
-  const customRows=ckeys.length?ckeys.map(k=>{const p=custom[k];return `<div class="bt-row">
-      <button class="bt-row-main" data-bt-view="${esc(k)}"><div class="bt-row-name">${esc(p.label)}</div><div class="bt-row-sub">${esc(profileSummary(p))}</div></button>
+  // Bankroll base ladders — set the bet per attempt; fixed-shape scaffolds the machine tables map onto.
+  const baseRows=['standard','high_limit'].map(k=>{const b=BASE_LADDERS[k];
+    return `<div class="bt-row">
+      <button class="bt-row-main" data-bt-view="${k}"><div class="bt-row-name">${esc(ladderFormulaName(b.buyin,b.table))}</div><div class="bt-row-sub">${esc(b.label)} · $${b.buyin.toLocaleString()} / attempt</div></button>
+    </div>`;}).join('');
+  const customRows=ckeys.length?ckeys.map(k=>{const p=custom[k];const nm=ladderFormulaName(100,buildProfileLadder(p));
+    return `<div class="bt-row">
+      <button class="bt-row-main" data-bt-view="${esc(k)}"><div class="bt-row-name">${esc(nm)}</div><div class="bt-row-sub">${esc(p.label)}${p.note?' · '+esc(p.note):''}</div></button>
       <button class="bt-mini" data-bt-edit="${esc(k)}">Edit</button>
       <button class="bt-mini danger" data-bt-del="${esc(k)}">Delete</button>
-    </div>`;}).join(''):`<div class="muted" style="font-size:12px;padding:4px 2px 8px;">No tables of your own yet — tap “New machine table”, or “Customize” a built-in below.</div>`;
-  const biRows=bikeys.map(k=>{const p=BUILTIN_PROFILES[k];return `<div class="bt-row">
-      <button class="bt-row-main" data-bt-view="${esc(k)}"><div class="bt-row-name">${esc(p.label)} <span class="bt-tag">built-in</span></div><div class="bt-row-sub">${esc(profileSummary(p))}</div></button>
-      <button class="bt-mini" data-bt-copy="${esc(k)}">Customize</button>
-    </div>`;}).join('');
-  openSheet('Bet tables',`
-    <div class="muted" style="font-size:12px;margin-bottom:10px;">Each table is one credit-based machine's bet menu (Hot Pot, Dancing Drums, Frightful Fortunes…). The ⚔️ Attack Ladder uses it to pick the denom + credit bet closest to every rung. Build your own right at the machine.</div>
+    </div>`;}).join(''):`<div class="muted" style="font-size:12px;padding:4px 2px 8px;">No machine tables yet — tap “New machine table” or scan one at the machine.</div>`;
+  openSheet('Attack Ladders',`
+    <div class="muted" style="font-size:12px;margin-bottom:10px;">Every ladder is named <b>[buy-in] / credits / denom</b> at its buy-in rung. The two bankroll ladders set your bet per attempt; each machine table reshapes the Standard ladder to the closest denom × credit bet that machine offers.</div>
+    <div class="bt-sec">Bankroll ladders</div>${baseRows}
+    <div class="bt-sec">Machine tables</div>
     <button class="btn primary" id="bt-new" style="width:100%;">+ New machine table</button>
-    ${(DRIVE||MOCK)?`<button class="btn" id="bt-scan-new" style="width:100%;margin-top:8px;">📷 Scan a machine with the camera</button>`:''}
-    <div class="bt-sec">Your tables</div>${customRows}
-    <div class="bt-sec">Built-in</div>${biRows}
+    ${(DRIVE||MOCK)?`<button class="btn" id="bt-scan-new" style="width:100%;margin-top:8px;margin-bottom:4px;">📷 Scan a machine with the camera</button>`:''}
+    ${customRows}
   `,()=>{
     document.getElementById('bt-new').addEventListener('click',()=>openBetTableBuilder(null));
     const scanNew=document.getElementById('bt-scan-new');
@@ -3680,8 +3730,6 @@ function openBetTablesSheet(){
     document.querySelectorAll('[data-bt-view]').forEach(b=>b.addEventListener('click',()=>openLadderPreviewSheet(b.dataset.btView)));
     document.querySelectorAll('[data-bt-edit]').forEach(b=>b.addEventListener('click',()=>{
       const p=getProfile(b.dataset.btEdit);if(p)openBetTableBuilder({id:p.id,key:b.dataset.btEdit,label:p.label,note:p.note,tiers:p.tiers});}));
-    document.querySelectorAll('[data-bt-copy]').forEach(b=>b.addEventListener('click',()=>{
-      const p=BUILTIN_PROFILES[b.dataset.btCopy];if(p)openBetTableBuilder({label:p.label+' (my copy)',note:p.note,tiers:JSON.parse(JSON.stringify(p.tiers))});}));
     document.querySelectorAll('[data-bt-del]').forEach(b=>b.addEventListener('click',async()=>{
       const p=getProfile(b.dataset.btDel);if(!p)return;
       if(!await confirmDialog(`Delete “${p.label}”? Games using it fall back to the standard ladder.`,{confirmLabel:'Delete',danger:true}))return;
