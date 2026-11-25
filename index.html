@@ -817,7 +817,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.71';
+const APP_VERSION='0.9.72';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -3821,9 +3821,9 @@ function openLadderPreviewSheet(key){
 function openBetTablesSheet(){
   const custom=customProfiles();const ckeys=Object.keys(custom);
   // Bankroll base ladders — set the bet per attempt; fixed-shape scaffolds the machine tables map onto.
-  const baseRows=['standard','high_limit'].map(k=>{const b=BASE_LADDERS[k];
+  const baseRows=['standard'].map(k=>{const b=BASE_LADDERS[k];
     return `<div class="bt-row">
-      <button class="bt-row-main" data-bt-view="${k}"><div class="bt-row-name">${esc(ladderFormulaName(b.buyin,b.table))}</div><div class="bt-row-sub">${esc(b.label)} · $${b.buyin.toLocaleString()} / attempt</div></button>
+      <button class="bt-row-main" data-bt-view="${k}"><div class="bt-row-name">${esc(ladderFormulaName(b.buyin,b.table))}</div><div class="bt-row-sub">${esc(b.label)} bankroll ladder</div></button>
     </div>`;}).join('');
   const customRows=ckeys.length?ckeys.map(k=>{const p=custom[k];const nm=ladderFormulaName(100,buildProfileLadder(p));
     return `<div class="bt-row">
@@ -3832,8 +3832,8 @@ function openBetTablesSheet(){
       <button class="bt-mini danger" data-bt-del="${esc(k)}">Delete</button>
     </div>`;}).join(''):`<div class="muted" style="font-size:12px;padding:4px 2px 8px;">No machine tables yet — tap “New machine table” or scan one at the machine.</div>`;
   openSheet('Attack Ladders',`
-    <div class="muted" style="font-size:12px;margin-bottom:10px;">Every ladder is named <b>[buy-in] / credits / denom</b> at its buy-in rung. The two bankroll ladders set your bet per attempt; each machine table reshapes the Standard ladder to the closest denom × credit bet that machine offers.</div>
-    <div class="bt-sec">Bankroll ladders</div>${baseRows}
+    <div class="muted" style="font-size:12px;margin-bottom:10px;">Every ladder is named <b>[buy-in] / credits / denom</b> at its buy-in rung. The Standard ladder sets your bet per attempt; each machine table reshapes it to the closest denom × credit bet that machine offers. Pick a ladder and buy-in when you start a slot session.</div>
+    <div class="bt-sec">Bankroll ladder</div>${baseRows}
     <div class="bt-sec">Machine tables</div>
     <button class="btn primary" id="bt-new" style="width:100%;">+ New machine table</button>
     ${(DRIVE||MOCK)?`<button class="btn" id="bt-scan-new" style="width:100%;margin-top:8px;margin-bottom:4px;">📷 Scan a machine with the camera</button>`:''}
