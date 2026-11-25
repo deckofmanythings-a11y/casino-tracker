@@ -239,6 +239,9 @@
   .bpl-table td{padding:5px 0;border-top:1px solid var(--faint);}
   .bpl-rung{font-weight:600;}
   .bpl-band{font-weight:400;color:var(--muted);font-size:11px;font-variant-numeric:tabular-nums;margin-top:1px;}
+  .lad-bal-row{display:flex;align-items:center;gap:8px;}
+  .lad-bal-pfx{font-size:22px;font-weight:800;color:var(--gold);}
+  .lad-bal-row input{flex:1;font-size:18px;font-weight:700;font-variant-numeric:tabular-nums;}
   .bpl-combo{color:var(--muted);font-variant-numeric:tabular-nums;}
   .bpl-bet{font-weight:800;font-variant-numeric:tabular-nums;}
   .bpl-bet.dup{color:var(--muted);}
@@ -814,7 +817,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.68';
+const APP_VERSION='0.9.69';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -1240,9 +1243,10 @@ function closestBet(opts,target){
 // between their neighbours (so order is preserved). If a relocated rung's distinct dollar is only
 // achievable at a lower denom, distinctness wins over the denom lean there. Where the menu has no
 // value between two colliding rungs at all, the duplicate stands. "All rungs different IF POSSIBLE."
-function buildProfileLadder(p){
-  const opts=profileOptions(p);if(!opts.length)return LADDER.slice();
-  const lad=LADDER.map(r=>{const o=closestBet(opts,r.bet);return {...r,_target:r.bet,denom:o.denom,bet:o.bet};});
+function buildProfileLadder(p,base){
+  base=base||LADDER;
+  const opts=profileOptions(p);if(!opts.length)return base.slice();
+  const lad=base.map(r=>{const o=closestBet(opts,r.bet);return {...r,_target:r.bet,denom:o.denom,bet:o.bet};});
   // best combo per $: HIGHEST denom (bigger jackpots — same preference as closestBet), then most
   // credits. A relocated rung (distinctness pass) thus keeps the denom lean instead of snapping low.
   const byBet={};opts.forEach(o=>{const c=byBet[o.bet];
@@ -1297,6 +1301,26 @@ const LADDER_START=LADDER.findIndex(r=>r.name==='Cruise');
 function ladderFormulaName(buyin,tbl){
   const cd=r=>Math.round(r.bet/r.denom)+'/'+ladderDenom(r.denom);
   return '$'+Number(buyin).toLocaleString()+'/'+cd(tbl[0])+' (Start: '+cd(tbl[LADDER_START])+')';
+}
+// Nearest real denomination to d (so an arbitrary ×k scale lands on a playable denom).
+function snapDenom(d){let best=DENOM_PALETTE[0];for(const p of DENOM_PALETTE)if(Math.abs(p-d)<Math.abs(best-d))best=p;return best;}
+// Compute a ladder for ANY starting balance, on the fly. Everything scales by k = balance/100 (the
+// $100 LADDER is the canonical shape): bands, floors, locks and the target bet per rung. Then the
+// denom × credits is chosen — for a machine profile, snapped to that machine's actual menu; for a
+// bankroll base, the scaled denom snapped to a real denomination with credits = bet ÷ denom.
+function ladderForBalance(balance,profile){
+  const k=Math.max(0.01,(Number(balance)||100)/100);
+  const floors=LADDER.map(r=>Math.round(r.floor*k));
+  const base=LADDER.map((r,i)=>{
+    const lo=floors[i],hi=i<LADDER.length-1?floors[i+1]:null;
+    const band=i===0?('Under $'+hi.toLocaleString())
+      :(hi==null?('$'+lo.toLocaleString()+'+'):('$'+lo.toLocaleString()+'–'+(hi-1).toLocaleString()));
+    return {...r,band,floor:lo,lock:Math.round(r.lock*k),live:Math.round(r.live*k),bet:+(r.bet*k).toFixed(2),
+      note:r.note?r.note.replace(/\$([\d,]+)/g,(m,n)=>'$'+Math.round(parseInt(n.replace(/,/g,''),10)*k).toLocaleString()):r.note};
+  });
+  if(profile)return buildProfileLadder(profile,base);            // snap each target to this machine's menu
+  return base.map(r=>{const denom=snapDenom(r.denom*k);const credits=Math.max(1,Math.round(r.bet/denom));
+    return {...r,denom,bet:+(denom*credits).toFixed(2)};});       // bankroll base: snap denom, credits = bet ÷ denom
 }
 // Normalize a session's stored rung/lock to valid in-range indices; unset ⇒ Cruise.
 // An explicit 0 (Survival) is respected — only a missing/invalid value falls back to the start.
@@ -3697,16 +3721,29 @@ function ladderPreviewHTML(p){
   if(!profileOptions(p).length)return '<div class="muted" style="font-size:12px;padding:6px 2px;">Pick a denomination and type in some bet levels to see the ladder.</div>';
   return ladderTableHTML(buildProfileLadder(p));
 }
-// View one ladder: a bankroll base ('standard'/'high_limit') or a machine table (its key).
+// View one ladder: a bankroll base ('standard'/'high_limit') or a machine table (its key). A
+// "Starting balance" input rescales the whole ladder on the fly (and, for a machine, snaps every
+// rung to that machine's denominations) so you can see, e.g., $300 on Hot Pots before you sit down.
 function openLadderPreviewSheet(key){
-  let title,note,lad;
-  if(isBaseKey(key)){const b=BASE_LADDERS[key];title=ladderFormulaName(b.buyin,b.table);
-    note=`${b.label} bankroll ladder · $${b.buyin.toLocaleString()} / attempt`;lad=b.table;}
-  else{const p=getProfile(key);if(!p)return;const built=buildProfileLadder(p);title=ladderFormulaName(100,built);
-    note=[p.label,p.note].filter(Boolean).join(' · ');lad=built;}
-  openSheet(title,`${note?`<div class="muted" style="font-size:12px;margin-bottom:8px;">${esc(note)}</div>`:''}
-    <div class="bpl-wrap">${ladderTableHTML(lad)}</div>
-    <div class="sheet-actions"><button class="btn primary" data-close-sheet>Done</button></div>`);}
+  let title,note,profile=null,defBal;
+  if(isBaseKey(key)){const b=BASE_LADDERS[key];title=b.label;note=`${b.label} bankroll ladder`;defBal=b.buyin;}
+  else{const p=getProfile(key);if(!p)return;profile=p;title=p.label;note=[p.label,p.note].filter(Boolean).join(' · ');defBal=100;}
+  openSheet(title,`${note?`<div class="muted" style="font-size:12px;margin-bottom:10px;">${esc(note)}</div>`:''}
+    <label class="field">Starting balance</label>
+    <div class="lad-bal-row"><span class="lad-bal-pfx">$</span><input id="lad-bal" inputmode="numeric" value="${defBal}" autocomplete="off"></div>
+    <div class="muted" style="font-size:11px;margin:5px 0 2px;">Rescales the whole ladder to this buy-in${profile?'’s bets, snapped to this machine’s denominations':''}.</div>
+    <div id="lad-name" class="bpl-head" style="margin-top:12px;"></div>
+    <div class="bpl-wrap" id="lad-prev" style="margin-top:4px;"></div>
+    <div class="sheet-actions"><button class="btn primary" data-close-sheet>Done</button></div>`,()=>{
+    const inp=document.getElementById('lad-bal'),nameEl=document.getElementById('lad-name'),prev=document.getElementById('lad-prev');
+    const paint=()=>{let bal=parseFloat(String(inp.value).replace(/[^0-9.]/g,''));if(!(bal>0))bal=defBal;
+      const lad=ladderForBalance(bal,profile);
+      nameEl.textContent=ladderFormulaName(bal,lad);
+      prev.innerHTML=ladderTableHTML(lad);};
+    inp.addEventListener('input',paint);
+    inp.addEventListener('focus',()=>inp.select());
+    paint();
+  });}
 
 function openBetTablesSheet(){
   const custom=customProfiles();const ckeys=Object.keys(custom);
