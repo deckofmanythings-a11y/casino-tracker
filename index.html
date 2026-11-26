@@ -831,7 +831,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.79';
+const APP_VERSION='0.9.80';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -1358,12 +1358,6 @@ function ladderTable(s){const k=ladderProfileKey(s);if(k==='high_limit')return L
 function ladderOpen(){try{return localStorage.getItem('ct_ladder_open')==='1';}catch(_){return false;}}
 // A fresh session (no stored rung yet) starts on Cruise — the ~$100 buy-in level.
 const LADDER_START=LADDER.findIndex(r=>r.name==='Cruise');
-// A ladder's name = [buy-in] / [lowest rung credits]/[denom] (Start: [buy-in rung credits]/[denom]).
-// Main part = the bottom rung (Survival, index 0); the parenthetical = the buy-in/start rung (Cruise).
-function ladderFormulaName(buyin,tbl){
-  const cd=r=>Math.round(r.bet/r.denom)+'/'+ladderDenom(r.denom);
-  return '$'+Number(buyin).toLocaleString()+'/'+cd(tbl[0])+' (Start: '+cd(tbl[LADDER_START])+')';
-}
 // Nearest real denomination to d (so an arbitrary ×k scale lands on a playable denom).
 function snapDenom(d){let best=DENOM_PALETTE[0];for(const p of DENOM_PALETTE)if(Math.abs(p-d)<Math.abs(best-d))best=p;return best;}
 // Compute a ladder for ANY starting balance, on the fly. Everything scales by k = balance/100 (the
@@ -3932,18 +3926,17 @@ function ladderPreviewHTML(p){
 function openLadderPreviewSheet(key){
   let title,note,profile=null,defBal;
   if(isBaseKey(key)){const b=BASE_LADDERS[key];title=b.label;note=b.sub||(b.label+' bankroll ladder');defBal=b.buyin;}
-  else{const p=getProfile(key);if(!p)return;profile=p;title=p.label;note=[p.label,p.note].filter(Boolean).join(' · ');defBal=100;}
+  else{const p=getProfile(key);if(!p)return;profile=p;title=p.label;note=p.note||profileSummary(p);defBal=100;}
   openSheet(title,`${note?`<div class="muted" style="font-size:12px;margin-bottom:10px;">${esc(note)}</div>`:''}
     <label class="field">Preview at balance</label>
     <div class="lad-bal-row"><span class="lad-bal-pfx">$</span><input id="lad-bal" inputmode="numeric" value="${defBal}" autocomplete="off"></div>
     <div class="muted" style="font-size:11px;margin:5px 0 2px;">What-if only — your real buy-in is set when you start a slot session.</div>
-    <div id="lad-name" class="bpl-head" style="margin-top:12px;"></div>
+    <div class="bpl-head" style="margin-top:12px;">⚔️ Attack Ladder</div>
     <div class="bpl-wrap" id="lad-prev" style="margin-top:4px;"></div>
     <div class="sheet-actions"><button class="btn primary" data-close-sheet>Done</button></div>`,()=>{
-    const inp=document.getElementById('lad-bal'),nameEl=document.getElementById('lad-name'),prev=document.getElementById('lad-prev');
+    const inp=document.getElementById('lad-bal'),prev=document.getElementById('lad-prev');
     const curBal=()=>{let bal=parseFloat(String(inp.value).replace(/[^0-9.]/g,''));return (bal>0)?bal:defBal;};
     const paint=()=>{const bal=curBal();const lad=ladderForBalance(bal,profile);
-      nameEl.textContent=ladderFormulaName(bal,lad);
       prev.innerHTML=ladderTableHTML(lad);};
     inp.addEventListener('input',paint);
     inp.addEventListener('focus',()=>inp.select());
@@ -3957,14 +3950,14 @@ function openBetTablesSheet(){
     return `<div class="bt-row">
       <button class="bt-row-main" data-bt-view="${k}"><div class="bt-row-name">${esc(b.label)}</div><div class="bt-row-sub">${esc(b.sub||'')}</div></button>
     </div>`;}).join('');
-  const customRows=ckeys.length?ckeys.map(k=>{const p=custom[k];const nm=ladderFormulaName(100,buildProfileLadder(p));
+  const customRows=ckeys.length?ckeys.map(k=>{const p=custom[k];
     return `<div class="bt-row">
-      <button class="bt-row-main" data-bt-view="${esc(k)}"><div class="bt-row-name">${esc(nm)}</div><div class="bt-row-sub">${esc(p.label)}${p.note?' · '+esc(p.note):''}</div></button>
+      <button class="bt-row-main" data-bt-view="${esc(k)}"><div class="bt-row-name">${esc(p.label)}</div><div class="bt-row-sub">${esc(p.note||profileSummary(p))}</div></button>
       <button class="bt-mini" data-bt-edit="${esc(k)}">Edit</button>
       <button class="bt-mini danger" data-bt-del="${esc(k)}">Delete</button>
     </div>`;}).join(''):`<div class="muted" style="font-size:12px;padding:4px 2px 8px;">No machine tables yet — tap “New machine table” or scan one at the machine.</div>`;
   openSheet('Attack Ladders',`
-    <div class="muted" style="font-size:12px;margin-bottom:10px;">The Core Attack Ladder sets your bet per attempt; each machine table reshapes it to the closest denom × credit bet that machine offers and is named <b>[buy-in] / credits / denom</b> at its buy-in rung. Pick a ladder and buy-in when you start a slot session.</div>
+    <div class="muted" style="font-size:12px;margin-bottom:10px;">The Core Attack Ladder sets your bet per attempt; each machine table reshapes it to the closest denom × credit bet that machine offers. Pick a ladder and buy-in when you start a slot session.</div>
     <div class="bt-sec">Bankroll ladder</div>${baseRows}
     <div class="bt-sec">Machine tables</div>
     <button class="btn primary" id="bt-new" style="width:100%;">+ New machine table</button>
