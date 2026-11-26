@@ -831,7 +831,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.75';
+const APP_VERSION='0.9.76';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -1566,7 +1566,12 @@ function serializeDB(){mockDB._schema=1;return mockDB;} // _rev already current 
 function normalizeDB(data,acct){const d=(data&&typeof data==='object')?data:{};const db=emptyDB(acct);
   ['games','trips','sessions','stakes','comps','comp_casinos','hitlist','bet_profiles','household'].forEach(k=>{if(Array.isArray(d[k]))db[k]=d[k];});
   db.sessions.forEach(s=>{s.buyins=s.buyins||[];s.bonuses=s.bonuses||[];});
-  db._rev=d._rev||0;return db;}
+  db._rev=d._rev||0;
+  // Carry over bookkeeping/one-time flags (_seededBuiltins, _mig_*, _savedAt, _schema …) so "run once"
+  // migrations and builtin-seeding actually STAY done across reloads — without this they silently re-run
+  // every load (idempotent, so it was only ever harmless by luck) and a deleted builtin would resurrect.
+  Object.keys(d).forEach(k=>{if(k.charAt(0)==='_'&&!(k in db))db[k]=d[k];});
+  return db;}
 function readLocalDB(id){try{return JSON.parse(localStorage.getItem('ct_drive_db_'+id));}catch(_){return null;}}
 async function driveLoadDB(acct){
   try{
@@ -1847,7 +1852,6 @@ async function seedBuiltinLaddersOnce(){
   if(DRIVE)scheduleDriveSave();
   if(last&&last.ok){applyBootstrap(last.bootstrap);cacheState();if(currentTab==='games')renderGames();}
 }
-
 async function doSignOut(){
   if(DRIVE){
     try{if(driveSaveTimer){clearTimeout(driveSaveTimer);}if(driveDirty)await flushDriveSave();}catch(_){}
