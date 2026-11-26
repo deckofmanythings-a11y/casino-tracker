@@ -831,7 +831,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.74';
+const APP_VERSION='0.9.75';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -1208,16 +1208,16 @@ function isBaseKey(k){return k==='standard'||k==='high_limit';}
 // state.bet_profiles (ct_bet_profiles, synced) and merge in through allProfiles(). A profile is
 // {label,short,note,tiers:[{denoms:[],levels:[]}]}; getProfile(key) resolves either source.
 const BUILTIN_PROFILES={
-  flaming_pots:{short:'Flaming Pots',label:'Super Hot Flaming Pots',note:'≥88 credits = all jackpots eligible',
+  flaming_pots:{short:'Flaming Pots',label:'Super Hot Flaming Pots',note:'≥88 credits = all jackpots eligible',pref:'bet',
     tiers:[{denoms:[0.01,0.02],levels:[88,176,264,528,880]},{denoms:[0.05,0.10],levels:[38,76,114,152,190]},{denoms:[1,2],levels:[10,20,30,40,50]}]},
-  mystery_lamp:{short:'Mystery of the Lamp',label:'Mystery of the Lamp',note:'More credits = better jackpot odds',
+  mystery_lamp:{short:'Mystery of the Lamp',label:'Mystery of the Lamp',note:'More credits = better jackpot odds',pref:'bet',
     tiers:[{denoms:[0.01,0.02],levels:[80,120,160,240,400]},{denoms:[0.05,0.10],levels:[40,60,80,120,200]},{denoms:[1,2],levels:[8,12,16,24,40]}]},
   frightful_fortunes:{short:'Frightful Fortunes',label:'Frightful Fortunes',note:'Brain Bonanza / Popping Pumpkins — same 75/150/225/375/750 at every denom',
     tiers:[{denoms:[0.01,0.02,0.05,0.10],levels:[75,150,225,375,750]}]},
 };
 function customProfiles(){const m={};(state.bet_profiles||[]).forEach(p=>{
   if(!p||!p.key||!Array.isArray(p.tiers))return;
-  m[p.key]={label:p.label||p.key,short:p.short||p.label||p.key,note:p.note||'',tiers:p.tiers,custom:true,id:p.id};});return m;}
+  m[p.key]={label:p.label||p.key,short:p.short||p.label||p.key,note:p.note||'',pref:p.pref||'denom',tiers:p.tiers,custom:true,id:p.id};});return m;}
 // Once the built-ins have been seeded into the user's own (editable) tables, stop merging the
 // hard-coded copies so an edited/deleted one isn't shadowed or resurrected by the const.
 function allProfiles(){let seeded=false;try{seeded=!!(mockDB&&mockDB._seededBuiltins);}catch(_){}
@@ -1231,24 +1231,50 @@ function profileOptions(p){const out=[];(p.tiers||[]).forEach(t=>(t.denoms||[]).
 // of the target farther from the ladder if it buys a higher denom. ONE knob: raise it to lean harder
 // on denom, lower it to hug the source ladder. 0 = pure nearest-bet (the old behavior).
 const DENOM_PULL=0.15;
-// Choose the combo for a target bet. Among every combo within (nearest + DENOM_PULL×target) of the
-// target, take the HIGHEST denom; break ties by closeness to target, then more credits (jackpot
-// eligibility), then lower dollar. Note: we can't see a machine's credit-eligibility threshold (it's
-// only in the free-text note), so denom is weighted, not credit minimums.
-function closestBet(opts,target){
+// A profile's `pref` says what's better on that machine, so the ladder can lean the right way when a
+// rung's target bet is reachable by several denom×credit combos:
+//   'denom'   → higher DENOMINATION (bigger per-credit payouts / jackpots). The original behavior.
+//   'bet'     → more CREDITS / a bigger total bet (machines where bet size drives feature or jackpot
+//               eligibility — e.g. "≥88 credits = all jackpots").
+//   'unknown' → no lean: just the closest available bet to each rung.
+// Missing pref defaults to 'denom' so every ladder built before this option keeps its exact shape.
+// Is combo `a` a better pick than `b` for `target` under `pref`? (Also used tie-only, target=bet.)
+function betterCombo(a,b,target,pref){
+  const da=Math.abs(a.bet-target),db=Math.abs(b.bet-target);
+  if(pref==='bet'){                                        // more credits wins → closer → higher denom
+    if(a.credits>b.credits+1e-9)return true;
+    if(Math.abs(a.credits-b.credits)<1e-9){
+      if(da<db-1e-9)return true;
+      if(Math.abs(da-db)<1e-9&&a.denom>b.denom+1e-9)return true;}
+    return false;
+  }
+  if(pref==='unknown'){                                    // closest wins → (neutral) higher denom → more credits
+    if(da<db-1e-9)return true;
+    if(Math.abs(da-db)<1e-9){
+      if(a.denom>b.denom+1e-9)return true;
+      if(Math.abs(a.denom-b.denom)<1e-9&&a.credits>b.credits+1e-9)return true;}
+    return false;
+  }
+  // 'denom' (default): higher denom wins → closer → more credits
+  if(a.denom>b.denom+1e-9)return true;
+  if(Math.abs(a.denom-b.denom)<1e-9){
+    if(da<db-1e-9)return true;
+    if(Math.abs(da-db)<1e-9&&a.credits>b.credits+1e-9)return true;}
+  return false;
+}
+// Choose the combo for a target bet. For a leaning pref we widen the search to every combo within
+// (nearest + DENOM_PULL×target) of the target, then let betterCombo pick the one that best serves the
+// lean; for 'unknown' the band collapses to the nearest bet (no drift). Note: we can't see a machine's
+// credit-eligibility threshold (it's only in the free-text note), so 'bet' weights credit count.
+function closestBet(opts,target,pref){
   if(!opts||!opts.length)return null;
+  pref=pref||'denom';
   let min=Infinity;for(const o of opts){const d=Math.abs(o.bet-target);if(d<min)min=d;}
-  const band=min+DENOM_PULL*target+1e-9;
+  const band=min+(pref==='unknown'?0:DENOM_PULL)*target+1e-9;
   let best=null;
   for(const o of opts){
-    if(Math.abs(o.bet-target)>band)continue;              // too far even with the denom allowance
-    if(!best){best=o;continue;}
-    if(o.denom>best.denom+1e-9){best=o;continue;}          // higher denom wins
-    if(Math.abs(o.denom-best.denom)<1e-9){                 // same denom → closest, then more credits
-      const db=Math.abs(best.bet-target),d1=Math.abs(o.bet-target);
-      if(d1<db-1e-9){best=o;continue;}
-      if(Math.abs(d1-db)<1e-9&&o.credits>best.credits)best=o;
-    }
+    if(Math.abs(o.bet-target)>band)continue;              // too far even with the lean allowance
+    if(!best||betterCombo(o,best,target,pref))best=o;
   }
   return best;
 }
@@ -1260,12 +1286,13 @@ function closestBet(opts,target){
 // value between two colliding rungs at all, the duplicate stands. "All rungs different IF POSSIBLE."
 function buildProfileLadder(p,base){
   base=base||LADDER;
+  const pref=(p&&p.pref)||'denom';
   const opts=profileOptions(p);if(!opts.length)return base.slice();
-  const lad=base.map(r=>{const o=closestBet(opts,r.bet);return {...r,_target:r.bet,denom:o.denom,bet:o.bet};});
-  // best combo per $: HIGHEST denom (bigger jackpots — same preference as closestBet), then most
-  // credits. A relocated rung (distinctness pass) thus keeps the denom lean instead of snapping low.
+  const lad=base.map(r=>{const o=closestBet(opts,r.bet,pref);return {...r,_target:r.bet,denom:o.denom,bet:o.bet};});
+  // Canonical combo per $ (used when the distinctness pass relocates a rung onto a different $): the
+  // split this machine's pref favors, so a relocated rung keeps the same lean instead of snapping back.
   const byBet={};opts.forEach(o=>{const c=byBet[o.bet];
-    if(!c||o.denom>c.denom+1e-9||(Math.abs(o.denom-c.denom)<1e-9&&o.credits>c.credits))byBet[o.bet]=o;});
+    if(!c||betterCombo(o,c,o.bet,pref))byBet[o.bet]=o;});
   const uniq=Object.values(byBet).sort((a,b)=>a.bet-b.bet);
   const setCombo=(r,bet)=>{const o=byBet[bet];r.denom=o.denom;r.bet=o.bet;};
   // nearest UNUSED value to `tgt` strictly inside (lo,hi)
@@ -1292,7 +1319,7 @@ function buildProfileLadder(p,base){
 }
 const _ladderCache={};
 function profileLadder(key){const p=getProfile(key);if(!p)return LADDER;
-  const sig=key+'|'+JSON.stringify(p.tiers);return _ladderCache[sig]||(_ladderCache[sig]=buildProfileLadder(p));}
+  const sig=key+'|'+(p.pref||'denom')+'|'+JSON.stringify(p.tiers);return _ladderCache[sig]||(_ladderCache[sig]=buildProfileLadder(p));}
 // Resolve a session's bet-profile key (or null = standard). The catalog game's bet_profile is the
 // source of truth ('standard' = explicit standard); a legacy credit_min===88 maps to flaming_pots.
 // Ad-hoc sessions (no catalog game) use a per-session localStorage override.
@@ -1814,7 +1841,7 @@ async function seedBuiltinLaddersOnce(){
   let last=null;
   for(const [key,p] of Object.entries(BUILTIN_PROFILES)){
     if(have.has(key))continue;
-    last=await api('ct-write',{action:'save-bet-profile',key,label:p.label,short:p.short,note:p.note||null,tiers:JSON.parse(JSON.stringify(p.tiers))});
+    last=await api('ct-write',{action:'save-bet-profile',key,label:p.label,short:p.short,note:p.note||null,pref:p.pref||'denom',tiers:JSON.parse(JSON.stringify(p.tiers))});
   }
   mockDB._seededBuiltins=1;
   if(DRIVE)scheduleDriveSave();
@@ -3900,7 +3927,7 @@ function openBetTablesSheet(){
     if(scanNew)scanNew.addEventListener('click',()=>openBetTableBuilder(null));
     document.querySelectorAll('[data-bt-view]').forEach(b=>b.addEventListener('click',()=>openLadderPreviewSheet(b.dataset.btView)));
     document.querySelectorAll('[data-bt-edit]').forEach(b=>b.addEventListener('click',()=>{
-      const p=getProfile(b.dataset.btEdit);if(p)openBetTableBuilder({id:p.id,key:b.dataset.btEdit,label:p.label,note:p.note,tiers:p.tiers});}));
+      const p=getProfile(b.dataset.btEdit);if(p)openBetTableBuilder({id:p.id,key:b.dataset.btEdit,label:p.label,note:p.note,pref:p.pref,tiers:p.tiers});}));
     document.querySelectorAll('[data-bt-del]').forEach(b=>b.addEventListener('click',async()=>{
       const p=getProfile(b.dataset.btDel);if(!p)return;
       if(!await confirmDialog(`Delete “${p.label}”? Games using it fall back to the standard ladder.`,{confirmLabel:'Delete',danger:true}))return;
@@ -3923,7 +3950,7 @@ function openBetTableBuilder(profile,returnTo){
       <input class="bt-levels" inputmode="text" placeholder="75 150 225 375 750 (space or comma)" value="${esc(levels)}"></div>`;};
   const startTiers=(profile&&profile.tiers&&profile.tiers.length)?profile.tiers:[{denoms:[],levels:[]}];
   openSheet(profile&&profile.id?'Edit bet table':'New bet table',`
-    <div class="muted" style="font-size:12px;margin-bottom:8px;">Enter a machine's bet menu — the denominations and the credit bet levels you can pick. The ladder rebuilds to the closest bet on this machine, leaning toward a higher denomination (bigger jackpots) when one is close, and keeps rungs distinct wherever the menu allows.</div>
+    <div class="muted" style="font-size:12px;margin-bottom:8px;">Enter a machine's bet menu — the denominations and the credit bet levels you can pick. The ladder rebuilds to the best bet this machine offers near each rung (using your “what's better” pick below) and keeps rungs distinct wherever the menu allows.</div>
     ${(DRIVE||MOCK)?`<button class="btn" id="bt-scan" type="button" style="width:100%;">📷 Scan the machine's screens</button>
     <input type="file" id="bt-scan-file" accept="image/*" capture="environment" multiple style="display:none;">
     <div class="muted" style="font-size:11px;margin:5px 0 12px;">Shoot one photo per denomination (tap a denom, then snap its bet tiles). I'll read them all and fill this in for you to check.</div>`:''}
@@ -3932,6 +3959,13 @@ function openBetTableBuilder(profile,returnTo){
     <div id="bt-tiers">${startTiers.map(tierCard).join('')}</div>
     <button class="btn" id="bt-add-tier" style="width:100%;margin-top:2px;">+ Add a denomination group</button>
     <div class="muted" style="font-size:11px;margin-top:6px;">Most machines need one group. Add another only when some denominations use <b>different</b> bet levels (e.g. 1¢–2¢ differ from 5¢–10¢).</div>
+    <label class="field" style="margin-top:12px;">On this machine, what's better?</label>
+    <div class="seg" id="bt-pref">
+      <button type="button" data-pref="denom">Denom size</button>
+      <button type="button" data-pref="bet">Bet size</button>
+      <button type="button" data-pref="unknown">Unknown</button>
+    </div>
+    <div class="muted" style="font-size:11px;margin-top:6px;" id="bt-pref-hint"></div>
     <label class="field" style="margin-top:12px;">Note (optional)</label>
     <input id="bt-note" placeholder="e.g. ≥88 credits = all jackpots eligible" value="${esc(profile&&profile.note?profile.note:'')}" autocomplete="off">
     <div class="bpl-wrap"><div class="bpl-head">⚔️ Attack Ladder preview</div><div id="bt-preview"></div></div>
@@ -3939,13 +3973,22 @@ function openBetTableBuilder(profile,returnTo){
   `,()=>{
     document.getElementById('bt-cancel').addEventListener('click',()=>{if(returnTo)returnTo(null);else closeSheet();});
     const tiersEl=document.getElementById('bt-tiers');
+    let selPref=(profile&&profile.pref)||'denom';
+    const PREF_HINT={denom:'Leans to the highest denomination near each rung — bigger per-credit payouts and jackpots.',
+      bet:'Leans to more credits / a bigger total bet near each rung — for machines where bet size drives feature or jackpot eligibility.',
+      unknown:'No lean — each rung just takes the closest bet this machine offers.'};
+    const prefSeg=document.getElementById('bt-pref'),prefHint=document.getElementById('bt-pref-hint');
+    const paintPref=()=>{prefSeg.querySelectorAll('button').forEach(b=>b.classList.toggle('sel',b.dataset.pref===selPref));
+      prefHint.textContent=PREF_HINT[selPref]||'';};
     const readProfile=()=>{const tiers=[];
       tiersEl.querySelectorAll('.bt-tier').forEach(tc=>{
         const denoms=[...tc.querySelectorAll('.bt-denom.sel')].map(x=>parseFloat(x.dataset.denom));
         const levels=(tc.querySelector('.bt-levels').value.match(/\d+(?:\.\d+)?/g)||[]).map(Number).filter(n=>n>0);
         if(denoms.length&&levels.length)tiers.push({denoms,levels});});
-      return {label:(document.getElementById('bt-name').value.trim()||'Machine'),note:document.getElementById('bt-note').value.trim(),tiers};};
+      return {label:(document.getElementById('bt-name').value.trim()||'Machine'),note:document.getElementById('bt-note').value.trim(),pref:selPref,tiers};};
     const refresh=()=>{document.getElementById('bt-preview').innerHTML=ladderPreviewHTML(readProfile());};
+    prefSeg.addEventListener('click',e=>{const b=e.target.closest('button[data-pref]');if(!b)return;selPref=b.dataset.pref;paintPref();refresh();});
+    paintPref();
     const addTier=()=>{tiersEl.insertAdjacentHTML('beforeend',tierCard({denoms:[],levels:[]}));refresh();};
     document.getElementById('bt-add-tier').addEventListener('click',addTier);
     tiersEl.addEventListener('click',e=>{
@@ -3979,7 +4022,7 @@ function openBetTableBuilder(profile,returnTo){
       const prof=readProfile();
       if(!prof.tiers.length)return toast('Pick a denomination and add at least one bet level.');
       const payload={action:'save-bet-profile',label:name,short:name.slice(0,40),
-        note:document.getElementById('bt-note').value.trim()||null,tiers:prof.tiers};
+        note:document.getElementById('bt-note').value.trim()||null,pref:prof.pref,tiers:prof.tiers};
       if(profile&&profile.id)payload.id=profile.id;
       else payload.key=('u_'+(name.toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'').slice(0,22)||'table')+'_'+Math.random().toString(36).slice(2,6)).slice(0,40);
       const r=await api('ct-write',payload);
@@ -4199,13 +4242,14 @@ function mockWrite(b){
     const tiers=mockCleanTiers(b.tiers);const label=String(b.label||'').trim().slice(0,60);
     if(!label||!tiers.length)return;
     const short=(String(b.short||'').trim()||label).slice(0,40);const note=(String(b.note||'').trim()||'').slice(0,120)||null;
+    const pref=(b.pref==='bet'||b.pref==='unknown')?b.pref:'denom';
     mockDB.bet_profiles=mockDB.bet_profiles||[];
-    if(b.id){const it=mockDB.bet_profiles.find(x=>x.id===b.id);if(it){it.label=label;it.short=short;it.note=note;it.tiers=tiers;}}
+    if(b.id){const it=mockDB.bet_profiles.find(x=>x.id===b.id);if(it){it.label=label;it.short=short;it.note=note;it.pref=pref;it.tiers=tiers;}}
     else{const key=String(b.key||'').trim().slice(0,40);if(!/^[a-z0-9_]{3,40}$/.test(key))return;
       const dup=mockDB.bet_profiles.find(x=>x.key===key);
-      if(dup){dup.label=label;dup.short=short;dup.note=note;dup.tiers=tiers;dup.archived=false;}
+      if(dup){dup.label=label;dup.short=short;dup.note=note;dup.pref=pref;dup.tiers=tiers;dup.archived=false;}
       else{const n=mockDB.bet_profiles.reduce((m,r)=>Math.max(m,num(r.sort_order)+1),0);
-        mockDB.bet_profiles.push({id:mockId('bp'),account_id:'me',key,label,short,note,tiers,sort_order:n,archived:false,created_at:new Date().toISOString()});}}}
+        mockDB.bet_profiles.push({id:mockId('bp'),account_id:'me',key,label,short,note,pref,tiers,sort_order:n,archived:false,created_at:new Date().toISOString()});}}}
   else if(a==='delete-bet-profile'){const it=(mockDB.bet_profiles||[]).find(x=>x.id===b.id);
     if(it){it.archived=true;mockDB.games.forEach(g=>{if(g.bet_profile===it.key)g.bet_profile=null;});}}
   else if(a==='household-add'){const name=String(b.name||'').trim().slice(0,60);if(!name)return;
