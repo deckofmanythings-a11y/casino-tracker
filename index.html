@@ -831,7 +831,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.78';
+const APP_VERSION='0.9.79';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -1262,13 +1262,17 @@ function betterCombo(a,b,target,pref){
     if(Math.abs(da-db)<1e-9&&a.credits>b.credits+1e-9)return true;}
   return false;
 }
-// Choose the combo for a target bet. For a leaning pref we widen the search to every combo within
-// (nearest + DENOM_PULL×target) of the target, then let betterCombo pick the one that best serves the
-// lean; for 'unknown' the band collapses to the nearest bet (no drift). Note: we can't see a machine's
-// credit-eligibility threshold (it's only in the free-text note), so 'bet' weights credit count.
+// Choose the combo for a target bet.
+//  • 'denom'   → denomBest(): play the HIGHEST denomination you can actually bet here, closest level at it.
+//  • 'bet'     → widen to every combo within (nearest + DENOM_PULL×target), then betterCombo leans to more
+//                credits / a bigger total bet (feature/jackpot eligibility). Stays near the core bet size.
+//  • 'unknown' → the band collapses to the nearest bet (no drift / no lean).
+// Note: we can't see a machine's credit-eligibility threshold (it's only in the free-text note), so 'bet'
+// weights credit count rather than a credit minimum.
 function closestBet(opts,target,pref){
   if(!opts||!opts.length)return null;
   pref=pref||'denom';
+  if(pref==='denom')return denomBest(opts,target);
   let min=Infinity;for(const o of opts){const d=Math.abs(o.bet-target);if(d<min)min=d;}
   const band=min+(pref==='unknown'?0:DENOM_PULL)*target+1e-9;
   let best=null;
@@ -1276,6 +1280,22 @@ function closestBet(opts,target,pref){
     if(Math.abs(o.bet-target)>band)continue;              // too far even with the lean allowance
     if(!best||betterCombo(o,best,target,pref))best=o;
   }
+  return best;
+}
+// 'Denom size is better': play the highest denomination that can still fit this rung — i.e. the highest
+// denom whose SMALLEST available bet is ≤ the target (so it doesn't force an overshoot) — then the closest
+// bet level at that denom (ties → the lower bet, to conserve bankroll). Deliberately does NOT hug the core
+// ladder's bet size the way the DENOM_PULL tether does: on a 10¢ / $1 machine the top rungs jump to $1
+// even though the nearest 10¢ bet is closer in dollars. Falls back to the lowest denom when even its
+// smallest bet overshoots a tiny target.
+function denomBest(opts,target){
+  const denoms=[...new Set(opts.map(o=>o.denom))].sort((a,b)=>b-a);   // high → low
+  let d=denoms.find(dn=>opts.some(o=>o.denom===dn&&o.bet<=target+1e-9));
+  if(d==null)d=denoms[denoms.length-1];                               // target below every denom's min bet
+  const pool=opts.filter(o=>o.denom===d);
+  let best=pool[0];
+  for(const o of pool){const d1=Math.abs(o.bet-target),db=Math.abs(best.bet-target);
+    if(d1<db-1e-9||(Math.abs(d1-db)<1e-9&&o.bet<best.bet-1e-9))best=o;}
   return best;
 }
 // Build a profile's Attack Ladder: each rung → the closest achievable denom×credits to the
@@ -4003,7 +4023,7 @@ function openBetTableBuilder(profile,returnTo){
     document.getElementById('bt-cancel').addEventListener('click',()=>{if(returnTo)returnTo(null);else closeSheet();});
     const tiersEl=document.getElementById('bt-tiers');
     let selPref=(profile&&profile.pref)||'denom';
-    const PREF_HINT={denom:'Leans to the highest denomination near each rung — bigger per-credit payouts and jackpots.',
+    const PREF_HINT={denom:'Plays the highest denomination you can bet at each rung (bigger per-credit payouts / jackpots), even if the bet size drifts from the core ladder.',
       bet:'Leans to more credits / a bigger total bet near each rung — for machines where bet size drives feature or jackpot eligibility.',
       unknown:'No lean — each rung just takes the closest bet this machine offers.'};
     const prefSeg=document.getElementById('bt-pref'),prefHint=document.getElementById('bt-pref-hint');
