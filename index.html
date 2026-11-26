@@ -831,7 +831,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.77';
+const APP_VERSION='0.9.78';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -1194,7 +1194,7 @@ function scaleLadder(base,k){
 const LADDER_HL=scaleLadder(LADDER,5);
 // The two bankroll BASE ladders, keyed like bet profiles so one selector covers both. 'standard'
 // is also represented by null in a session's stored key (legacy); 'high_limit' is always explicit.
-const BASE_LADDERS={standard:{label:'Standard',buyin:100,table:LADDER},high_limit:{label:'High Limit',buyin:500,table:LADDER_HL}};
+const BASE_LADDERS={standard:{label:'Core Attack Ladder',sub:'$100 Dragon/Phoenix/Lightning Link',buyin:100,table:LADDER},high_limit:{label:'High Limit',sub:'$500 buy-in',buyin:500,table:LADDER_HL}};
 function isBaseKey(k){return k==='standard'||k==='high_limit';}
 // Credit-based machines (Super Hot Flaming Pots, Mystery of the Lamp, the 88 Fortunes / Dancing
 // Drums family…) don't take an arbitrary dollar bet: you pick a DENOMINATION, then a credit "bet
@@ -1416,7 +1416,7 @@ function renderLadderDynamic(root,s){
   cur.innerHTML=`<div class="lc-top"><span class="lc-name">${esc(r.name)}</span><span class="lc-band">${esc(r.band)}</span></div>
     <div class="lc-bet"><span class="lc-denom">${ladderDenom(r.denom)}</span><span class="lc-attempt">${money(r.bet)} <small>/ attempt</small></span><span class="lc-cr" title="Bet ÷ denom — press bet-up until the machine reads this">${cr} <small>credits</small></span></div>
     ${note?`<div class="lc-note">${esc(note)}</div>`:''}`;
-  const modeName=prof?prof.short:'Standard';
+  const modeName=prof?prof.short:BASE_LADDERS.standard.label;
   const mb=root.querySelector('[data-lad-mode]');
   if(mb){mb.classList.toggle('on',!!prof);
     mb.innerHTML=`Ladder: <b>${esc(modeName)}</b>`;}
@@ -2354,7 +2354,7 @@ function bindCrapsBonus(pre){
 // ── New / edit session ──────────────────────────────────────────────────────
 // Attack Ladder <select> options for a slot session: Standard + every machine table + "Add a New…".
 function ladderSelectOptions(sel){
-  let html='<option value="standard"'+((!sel||sel==='standard')?' selected':'')+'>Standard (no machine)</option>';
+  let html='<option value="standard"'+((!sel||sel==='standard')?' selected':'')+'>'+esc(BASE_LADDERS.standard.label)+' (no machine)</option>';
   profileKeys().forEach(k=>{const p=getProfile(k);if(!p)return;
     html+='<option value="'+esc(k)+'"'+(sel===k?' selected':'')+'>'+esc(p.label)+'</option>';});
   html+='<option value="__new">➕ Add a New Ladder…</option>';
@@ -3772,7 +3772,7 @@ function openGameSheet(game){
       <div><label class="field">Default bet</label><input id="g-bet" inputmode="decimal" value="${g.default_bet??''}"></div></div></div>
     <div id="g-betprofile-wrap" style="${isSlotty(cat)?'':'display:none'}">
       <label class="field">Attack Ladder bet structure</label>
-      <select id="g-betprofile">${['standard','high_limit',...profileKeys()].map(k=>`<option value="${k}">${k==='standard'?'Standard ($100)':k==='high_limit'?'High Limit ($500)':esc(getProfile(k).label)}</option>`).join('')}</select>
+      <select id="g-betprofile">${['standard','high_limit',...profileKeys()].map(k=>`<option value="${k}">${k==='standard'?esc(BASE_LADDERS.standard.label):k==='high_limit'?'High Limit ($500)':esc(getProfile(k).label)}</option>`).join('')}</select>
       <div class="muted" style="font-size:11px;margin-top:4px;">For credit-based machines — the ladder picks the denom + credit bet level closest to each rung.</div>
     </div>
     <label class="field">Default buy-in (optional)</label>
@@ -3911,7 +3911,7 @@ function ladderPreviewHTML(p){
 // which is what the live ladder scales to. For a machine, every rung snaps to its denominations.
 function openLadderPreviewSheet(key){
   let title,note,profile=null,defBal;
-  if(isBaseKey(key)){const b=BASE_LADDERS[key];title=b.label;note=`${b.label} bankroll ladder`;defBal=b.buyin;}
+  if(isBaseKey(key)){const b=BASE_LADDERS[key];title=b.label;note=b.sub||(b.label+' bankroll ladder');defBal=b.buyin;}
   else{const p=getProfile(key);if(!p)return;profile=p;title=p.label;note=[p.label,p.note].filter(Boolean).join(' · ');defBal=100;}
   openSheet(title,`${note?`<div class="muted" style="font-size:12px;margin-bottom:10px;">${esc(note)}</div>`:''}
     <label class="field">Preview at balance</label>
@@ -3935,7 +3935,7 @@ function openBetTablesSheet(){
   // Bankroll base ladders — set the bet per attempt; fixed-shape scaffolds the machine tables map onto.
   const baseRows=['standard'].map(k=>{const b=BASE_LADDERS[k];
     return `<div class="bt-row">
-      <button class="bt-row-main" data-bt-view="${k}"><div class="bt-row-name">${esc(ladderFormulaName(b.buyin,b.table))}</div><div class="bt-row-sub">${esc(b.label)} bankroll ladder</div></button>
+      <button class="bt-row-main" data-bt-view="${k}"><div class="bt-row-name">${esc(b.label)}</div><div class="bt-row-sub">${esc(b.sub||'')}</div></button>
     </div>`;}).join('');
   const customRows=ckeys.length?ckeys.map(k=>{const p=custom[k];const nm=ladderFormulaName(100,buildProfileLadder(p));
     return `<div class="bt-row">
@@ -3944,7 +3944,7 @@ function openBetTablesSheet(){
       <button class="bt-mini danger" data-bt-del="${esc(k)}">Delete</button>
     </div>`;}).join(''):`<div class="muted" style="font-size:12px;padding:4px 2px 8px;">No machine tables yet — tap “New machine table” or scan one at the machine.</div>`;
   openSheet('Attack Ladders',`
-    <div class="muted" style="font-size:12px;margin-bottom:10px;">Every ladder is named <b>[buy-in] / credits / denom</b> at its buy-in rung. The Standard ladder sets your bet per attempt; each machine table reshapes it to the closest denom × credit bet that machine offers. Pick a ladder and buy-in when you start a slot session.</div>
+    <div class="muted" style="font-size:12px;margin-bottom:10px;">The Core Attack Ladder sets your bet per attempt; each machine table reshapes it to the closest denom × credit bet that machine offers and is named <b>[buy-in] / credits / denom</b> at its buy-in rung. Pick a ladder and buy-in when you start a slot session.</div>
     <div class="bt-sec">Bankroll ladder</div>${baseRows}
     <div class="bt-sec">Machine tables</div>
     <button class="btn primary" id="bt-new" style="width:100%;">+ New machine table</button>
