@@ -831,7 +831,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.80';
+const APP_VERSION='0.9.81';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -1222,7 +1222,10 @@ function customProfiles(){const m={};(state.bet_profiles||[]).forEach(p=>{
 // hard-coded copies so an edited/deleted one isn't shadowed or resurrected by the const.
 function allProfiles(){let seeded=false;try{seeded=!!(mockDB&&mockDB._seededBuiltins);}catch(_){}
   const base=seeded?{}:BUILTIN_PROFILES;return {...base,...customProfiles()};}
-function profileKeys(){return Object.keys(allProfiles());}
+// Keys of every machine table, sorted alphabetically by name (so the manager list and the ladder
+// dropdowns show the added ladders A→Z). Case-insensitive, number-aware.
+function profileKeys(){const m=allProfiles();
+  return Object.keys(m).sort((a,b)=>(m[a].label||a).localeCompare(m[b].label||b,undefined,{sensitivity:'base',numeric:true}));}
 function getProfile(k){return k?(allProfiles()[k]||null):null;}
 function profileOptions(p){const out=[];(p.tiers||[]).forEach(t=>(t.denoms||[]).forEach(d=>(t.levels||[]).forEach(c=>{
   d=num(d);c=num(c);if(d>0&&c>0)out.push({denom:d,credits:+c,bet:+(d*c).toFixed(2)});})));return out;}
@@ -3944,7 +3947,8 @@ function openLadderPreviewSheet(key){
   });}
 
 function openBetTablesSheet(){
-  const custom=customProfiles();const ckeys=Object.keys(custom);
+  const custom=customProfiles();
+  const ckeys=Object.keys(custom).sort((a,b)=>(custom[a].label||a).localeCompare(custom[b].label||b,undefined,{sensitivity:'base',numeric:true}));
   // Bankroll base ladders — set the bet per attempt; fixed-shape scaffolds the machine tables map onto.
   const baseRows=['standard'].map(k=>{const b=BASE_LADDERS[k];
     return `<div class="bt-row">
