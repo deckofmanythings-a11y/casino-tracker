@@ -831,7 +831,7 @@
 //  Supabase Auth (email/password) identity; Supabase Edge Functions
 //  (ct-whoami / ct-data / ct-write / ct-scan-ticket) scoped per user by JWT.
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_VERSION='0.9.76';
+const APP_VERSION='0.9.77';
 document.getElementById('version-tag').textContent='v'+APP_VERSION;
 
 // ── Crash reporter ─────────────────────────────────────────────────────────
@@ -1811,7 +1811,9 @@ function boot(acct,bootstrap){
   $('app').classList.add('show');
   setTab(currentTab||'today');
   maybeShowCompsPopup();
-  seedBuiltinLaddersOnce();
+  // Owner-scoped one-time ladder wipe must finish (and mark builtins seeded) BEFORE the builtin seeding
+  // runs, so the three built-in tables don't get re-created this load.
+  (async()=>{try{await wipeLaddersOnce();}catch(_){}seedBuiltinLaddersOnce();})();
 }
 // One-time, flagged data cleanups on the user's own data (DRIVE/MOCK). Idempotent and safe to leave
 // in place — the flag stops it re-running, and each step no-ops if already clean.
@@ -1840,6 +1842,29 @@ function runDataFixupsOnce(){
 // editable/deletable like any other. Runs once per account (flag persists in the Drive file); an
 // already-present key is skipped, and a later delete won't be resurrected (allProfiles stops merging
 // the consts once the flag is set).
+// One-time "tabula rasa", SCOPED TO A SINGLE ACCOUNT (this is an open multi-user app — a global wipe
+// would clear every user's ladders). Gate = salted SHA-256 of the account email, so no plaintext
+// identity ships in the public source. For the matching account it removes every machine table, detaches
+// any catalog game pointing at one, and marks builtins as seeded so seedBuiltinLaddersOnce() won't
+// restore them. Flagged + now persisted (normalizeDB), so it runs exactly once and never touches a
+// ladder the user builds afterward. Everyone else: no-op.
+const WIPE_LADDERS_EMAIL_HASH='cd4c76c4992b3e1f2ddfb516ed07e9d782a86dd6155f1361db289d30150c8ae3';
+async function sha256Hex(s){const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s));
+  return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('');}
+async function wipeLaddersOnce(){
+  if(!(DRIVE||MOCK)||!mockDB||mockDB._mig_wipe_ladders)return;
+  const email=((account&&account.email)||userEmail||'').trim().toLowerCase();
+  if(!email)return;
+  let h='';try{h=await sha256Hex('ct-wipe-ladders-v1:'+email);}catch(_){return;}
+  if(h!==WIPE_LADDERS_EMAIL_HASH)return;                    // not the owner → leave their ladders alone
+  mockDB.bet_profiles=[];                                   // drop all machine tables
+  (mockDB.games||[]).forEach(g=>{if(g.bet_profile&&!isBaseKey(g.bet_profile))g.bet_profile=null;});
+  mockDB._seededBuiltins=1;                                 // keep the builtins from re-seeding
+  mockDB._mig_wipe_ladders=1;
+  if(DRIVE)scheduleDriveSave();
+  applyBootstrap(mockBootstrap(state.today||todayLocal()));cacheState();
+  if(currentTab==='games')renderGames();
+}
 async function seedBuiltinLaddersOnce(){
   if(!(DRIVE||MOCK)||!mockDB||mockDB._seededBuiltins)return;
   const have=new Set((mockDB.bet_profiles||[]).map(p=>p.key));
